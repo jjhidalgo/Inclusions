@@ -1,4 +1,4 @@
-import pdb
+#import pdb
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse as sp
@@ -247,17 +247,17 @@ def plot2D(C, Nx, Ny,Lx, Ly, fig=None, ax=None):
     dy = Ly/Ny
 
     # xx, yy need to be +1 the shape of C because
-    #pcolormesh needs the quadrilaterals.
-    #Otherwise last column is ignored.
+    # pcolormesh needs the quadrilaterals.
+    # Otherwise the last column is ignored.
     #see: matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pcolor
     cny, cnx = C.shape
 
-    if cnx > cny:      #x face centered
+    if cnx > Nx:      # x face centered
 
         x1 = np.arange(-dx/2., Lx + dx, dx) 
         y1 = np.arange(0., Ly + dy, dy)
         
-    elif cnx < cny: #y face centered
+    elif cny < Ny: # y face centered
 
         x1 = np.arange(0., Lx + dx, dx) 
         y1 = np.arange(-dy/2., Ly + dy, dy)
@@ -268,7 +268,6 @@ def plot2D(C, Nx, Ny,Lx, Ly, fig=None, ax=None):
         y1 = np.arange(0., Ly+dy, dy)
         
     xx, yy = np.meshgrid(x1, y1)
-
 
     plt.sca(ax)
     plt.ion()
@@ -282,31 +281,3 @@ def plot2D(C, Nx, Ny,Lx, Ly, fig=None, ax=None):
     plt.show()
 
     return fig, ax
-
-#####
-# Ly = 1.
-# Lx = 1.
-# Ny = 5
-# Nx = np.int(Ny*Lx)
-# Kfactor = 0.1
-# nry = 5
-# plotit = False
-# kperm = permeability(nry, Lx, Nx, Ny, Kfactor, plotit)
-
-# #kperm = np.ones(kperm.shape)
-# bcc = True
-# ux, uy = flow(Nx, Ny, Lx, Ly, kperm, bcc)
-
-# tmax = 1e2
-# dt = 1e-3
-
-# Npart = np.int(1e5)
-# cbtc, time = transport(Npart, ux, uy, Nx, Ny, Lx, Ly, tmax, dt)
-
-# np.savetxt('cbtc.dat', np.matrix([time, cbtc]).transpose())
-# figc = None
-# axc = None
-# linc = None
-# figc, axc, linc = plotXY(time, 1-cbtc, fig=figc, ax=axc, lin=linc)
-# #pdb.set_trace()
-# raw_input("Press enter to continue...")
