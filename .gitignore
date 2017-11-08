@@ -90,6 +90,6 @@ ENV/
 
 # output
 *.dat
-
+*.plk
 # emacs back up files
 *~
