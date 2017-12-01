@@ -1,11 +1,11 @@
 from Inclusions import *
 
 run_simulation(Lx=1., Ny=100,
-                   pack='tri',n_incl_y=3, Kfactor=0.1,
-                   bcc='flow', isPeriodic=True, integrateInTime=True,
-                   tmax=6., dt=None, Npart=10000,
+                   pack='tri',n_incl_y=1, Kfactor=0.001,
+                   bcc='head', isPeriodic=True, integrateInTime=True,
+                   tmax=700.0, dt=None, Npart=int(1e4),
                    plotPerm=True, plotFlow=True,
-                   plotTpt=True, plotBTC=True,
+                   plotTpt=False, plotBTC=True,
                    doPost=True)
 #pdb.set_trace()
-input("Press enter to continue...")
+#input("Press enter to continue...")
