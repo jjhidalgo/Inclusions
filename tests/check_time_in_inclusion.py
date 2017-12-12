@@ -39,8 +39,7 @@ ux = np.ones([Ny, Nx + 1])
 uy = np.zeros([Ny + 1, Nx])
 x1 = np.arange(0., Lx + dx, dx) #faces' coordinates
 xx, yy = np.meshgrid(x1, y1)
-#mm1 = (yy>0.5) & (xx>0.25) & (xx<0.5)
-#ux[mm1] = 0.1
+
 tmax = None
 ds = 0.01*Lx/Nx
 time_ds, t_in_incl_ds = II.transport_ds(grid, incl_ind, Npart, ux, uy,
@@ -52,5 +51,5 @@ dt = 0.001
 time_dt, t_in_incl_dt = II.transport(grid, incl_ind, Npart, ux, uy,
                                      tmax, dt, isPeriodic=False,
                                      plotit=False, CC=None)
-ipdb.set_trace()
-#input("Press enter to continue...")
+_, _ = II.mobile_inmmobile_time(t_in_incl_dt, time_dt,filename='zz', saveit=True)
+_ = II.incl_per_time(t_in_incl_dt,saveit=True)

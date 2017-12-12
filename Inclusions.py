@@ -1,10 +1,23 @@
+""" This module provides functions to solve the flow and transport equations
+    in porous media at the Darcy scale. The domain is rectangular and the
+    permeability field can contain circular inclusions arranged regularly or
+    randomly.
+
+    Author: Juan J. Hidalgo.
+    Acknowledgements:
+        Project MHetScale (FP7-IDEAS-ERC-617511)
+            European Research Council
+
+        Project Mec-MAT (CGL2016-80022-R)
+            Spanish Ministry of Economy and Competitiveness
+"""
 import pickle
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
-#import ipdb
+import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -17,7 +30,10 @@ def run_simulation(*, Lx=1., Ny=50,
 
     grid = setup_grid(Lx, Ny)
 
-    kperm, incl_ind, grid = permeability(grid, n_incl_y, Kfactor, pack, plotPerm)
+    kperm, incl_ind, grid = permeability(grid, n_incl_y, Kfactor,
+                                         pack=pack, filename=filename,
+                                         plotit=plotPerm, saveit=True)
+
 
     ux, uy = flow(grid, kperm, bcc, isPeriodic=isPeriodic, plotHead=plotFlow)
 
@@ -31,37 +47,50 @@ def run_simulation(*, Lx=1., Ny=50,
 
 
     if integrateInTime:
-        arrival_time, t_in_incl = transport(grid, incl_ind,
-                                            Npart, ux, uy,
-                                            tmax, dt, isPeriodic=isPeriodic,
-                                            plotit=plotTpt, CC=kperm)
+        arrival_times, t_in_incl = transport(grid, incl_ind,
+                                             Npart, ux, uy,
+                                             tmax, dt, isPeriodic=isPeriodic,
+                                             plotit=plotTpt, CC=kperm)
     else:
-        arrival_time, t_in_incl = transport_ds(grid, incl_ind,
-                                               Npart, ux, uy,
-                                               dt, isPeriodic=isPeriodic)
+        arrival_times, t_in_incl = transport_ds(grid, incl_ind,
+                                                Npart, ux, uy,
+                                                dt, isPeriodic=isPeriodic)
 
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
 
-    cbtc_time, cbtc = compute_cbtc(arrival_time)
+    cbtc_time, cbtc = compute_cbtc(arrival_times)
     np.savetxt(filename + '-btc.dat', np.matrix([cbtc_time, cbtc]).transpose())
 
     with open(filename + '.plk', 'wb') as ff:
-        pickle.dump([Npart, t_in_incl, arrival_time], ff, pickle.HIGHEST_PROTOCOL)
+        pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
 
     if plotBTC:
-        _, _, _ = plotXY(cbtc_time, 1. - cbtc,allowClose=True)
+        _, _, _ = plotXY(cbtc_time, 1. - cbtc, allowClose=True)
     print("End of simulation.\n")
 
     if doPost:
-        _, _ = time_distributions(Npart, t_in_incl, writeit=True, fname=filename)
+
+        _, _ = mobile_inmmobile_time(t_in_incl, arrival_times,
+                                     filename=filename, saveit=True)
+
+        _ = time_per_inclusion(t_in_incl,
+                               saveit=True, filename=filename)
+
+        _, _ = incl_per_time(t_in_incl, plotit=False,
+                             saveit=True, filename=filename)
+
         print("End of postprocess.\n")
 
     return True
 ################
 def setup_grid(Lx, Ny):
-    """Grid set up."""
+    """Grid set up. Given the length in x (Lx) and the
+       number of cells in y (Ny) returns a numpy structured
+       array  with Lx, Ly, Nx, Ny. Ly is always 1 and Nx is
+       computed so that the cells are squares.
+    """
 
     grid = np.zeros(1, dtype={'names':['Lx', 'Ly', 'Nx', 'Ny'], \
                 'formats':['float64', 'float64', 'int32', 'int32']})
@@ -73,20 +102,22 @@ def setup_grid(Lx, Ny):
     return grid
 ################
 def unpack_grid(grid):
-
     return grid['Lx'][0], grid['Ly'][0], grid['Nx'][0], grid['Ny'][0]
 
 ################
-def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', plotit=False, saveit=False):
-    """Computes permeability parttern inside a 1. x Lx rectangle.
+def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=False, saveit=True):
+    """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
-       Then de domain is resized by adding 3*radius on the left
-       avoid boundary effects.
+       If the arrangement os random, the radius is reduced by 10%
+       to increase the chance of achieving the target porosity.
+
+       Then the domain is resized by adding 3*radius on the left
+       to avoid boundary effects.
        The dimension of the box and the discretization are changed
        so that the grid remains regular.
 
-       The function returns the permeability field, the indexes of
-       location fo the inclusions and the new grid.
+       The function returns the permeability field, the cell indexes
+       the location of the inclusions and the new grid.
     """
 
     import RecPore2D as rp
@@ -99,8 +130,9 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', plotit=False, saveit=Fa
     radius = np.sqrt(np.float(Lx)/(2. * np.pi * np.float(n_incl)))
 
 
-    if pack=='sqr' or pack=='tri':
-        pore = rp. RegPore2D(nx=n_incl_x, ny=n_incl_y, radius=radius, packing=pack)
+    if pack == 'sqr' or pack == 'tri':
+        pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
+                            radius=radius, packing=pack)
         throat = (Ly - 2.0*np.float(n_incl_y)*radius)/(np.float(n_incl_y) + 1.0)
         pore.throat = throat
         pore.bounding_box = ([0.0, 0.0, 0.5], [Lx, Ly, 1.0])
@@ -110,58 +142,49 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', plotit=False, saveit=Fa
         #delta = Lx - n_incl_x*(throat + 2.*radius)
         #displacement = (delta - throat)/2.
 
-    elif pack=='rnd':
+    elif pack == 'rnd':
 
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
-                            rmin=0.99*radius, rmax=0.99*radius,
-                            target_porosity=0.5, packing='rnd')
-        pore.ntries_max = int(1e4)
+                            rmin=0.90*radius, rmax=0.90*radius,
+                            target_porosity=0.6, packing='rnd')
 
-    #centers the circles in bounding box.
-    displacement = np.ceil(3.*radius)
-    circles = pore.circles
-    circles[:]['x'] = circles[:]['x'] + displacement
+        pore.ngrains_max = int(1.1*n_incl)
+        pore.ntries_max = int(1e5)
 
-    #
+
     # Resizes domain to avoid boundary effects
+    # (2*radius added to the left and to the right).
+    displacement = np.ceil(4.*radius)
+    circles = pore.circles
+    circles[:]['x'] = circles[:]['x'] + 0.5*displacement
+
     grid = setup_grid(Lx + displacement, Ny)
-    Lx, Ly, Nx, Ny = unpack_grid(grid)
 
-    kperm = np.ones([Ny, Nx])
-    incl_ind = np.zeros([Ny, Nx])
-    dx = Lx/Nx
-    dy = Ly/Ny
-    x1 = np.arange(dx/2.0, Lx, dx) #cell centers' coordinates
-    y1 = np.arange(dy/2.0, Ly, dy)
-    xx, yy = np.meshgrid(x1, y1)
+    kperm, incl_ind = perm_matrix(grid, circles, Kfactor)
 
-    i = 0
-
-    for circ in circles:
-        i = i + 1
-        x0 = circ['x']
-        y0 = circ['y']
-        r = circ['r']
-        mask = ((xx - x0)**2.0 + (yy - y0)**2.0) < r**2.0
-        kperm[mask] = Kfactor
-        incl_ind[mask] = i
 
     # kperm[xx>-1] = 1.
     # kperm[yy>0.5] = 0.1
     # kperm[xx<0.25] = 1.
     # kperm[xx>0.75] = 1.
-
     if plotit:
-        plot2D(kperm, Nx, Ny, Lx, Ly, title='kperm', allowClose=True)
-
+        plot2D(grid, kperm, title='kperm', allowClose=True)
 
     if saveit:
-            with open('perm.plk', 'wb') as ff:
-                pickle.dump([Nx,Ny,Lx,Ly, kperm], ff, pickle.HIGHEST_PROTOCOL)
-    return kperm, sp.csr_matrix(incl_ind), grid
+        if filename is None:
+            fname = 'perm.plk'
+        else:
+            fname = filename + '-perm.plk'
+
+        with open(fname, 'wb') as ff:
+            pickle.dump([grid, circles, Kfactor], ff, pickle.HIGHEST_PROTOCOL)
+
+    return kperm, incl_ind, grid
 
 ################
 def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
+    ''' Solves the flow equation and returns the velocity
+        at the cell's faces.'''
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
@@ -224,7 +247,7 @@ def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
 
     Am = sp.spdiags([-Tx2/dx2, -TypDw/dy2, -Ty22/dy2, Dp,
                      -Ty11/dy2, -TypUp/dy2, -Tx1/dx2],
-                     [-Ny, -Ny + 1, -1, 0, 1, Ny - 1, Ny], Np, Np,
+                    [-Ny, -Ny + 1, -1, 0, 1, Ny - 1, Ny], Np, Np,
                     format='csr')
 
 
@@ -260,25 +283,30 @@ def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
 
     #periodic
     if isPeriodic:
-        uy[0, :] =  Typ*(head[0,:] - head[Ny - 1,:])/dy
-        uy[Ny, :] =  uy[0,:]
+        uy[0, :] = Typ*(head[0, :] - head[Ny - 1, :])/dy
+        uy[Ny, :] = uy[0, :]
 
 
     if plotHead:
-        plot2D(head, Nx, Ny, Lx, Ly, title='head', allowClose=True)
-        plot2D(ux/dy, Nx, Ny, Lx, Ly, title='ux', allowClose=True)
-        plot2D(uy/dx, Nx, Ny, Lx, Ly, title='uy', allowClose=True)
+        plot2D(grid, head, title='head', allowClose=True)
+        plot2D(grid, ux/dy, title='ux', allowClose=True)
+        plot2D(grid, uy/dx, title='uy', allowClose=True)
 
     return ux/dy, uy/dx
 
 #####
 def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
               plotit=False, CC=None):
+    '''Solves the transport of a line of concentration initially at the
+       left boundary using a particle tracking method.
+
+       Returns the arrival times of the particles to the right boundary
+       and data about the time spent in the inclusions.'''
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     if plotit and  CC is not None:
-        figt, axt = plot2D(CC, Nx, Ny, Lx, Ly)
+        figt, axt = plot2D(grid, CC)
 
     t = 0.
     xp = np.zeros(Npart)
@@ -313,7 +341,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
         t_in_incl.append({})
 
     nwrite = 10# np.max([int((tmax/dt)/1000),10])
-    arrival_time = np.zeros(Npart)
+    arrival_times = np.zeros(Npart)
     i = 0
 
     isIn = np.where(xp < Lx)[0]
@@ -333,8 +361,8 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
 
         ix = (indy + indx*Ny)
 
-        t_in_incl = comp_time_in_incl(t_in_incl, incl_ind, isIn,
-                                      indx, indy, t*np.ones(Npart))
+        t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
+                                        indx, indy, t*np.ones(Npart))
         # #Auxiliary array with the numbers of the inclusions
         # #where particles are. Inclusion 0 is the matrix.
         # aux1 = incl_ind[[indy], [indx]].toarray()[0]
@@ -369,7 +397,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
             yp[yp > Ly] = 2.*Ly - yp[yp > Ly]
 
         isOut = isIn[np.where(xp[isIn] >= Lx)]
-        arrival_time[isOut] = t # Correction TO DO - (xp[isOut] - Lx)/uxp
+        arrival_times[isOut] = t # Correction TO DO - (xp[isOut] - Lx)/uxp
 
         isIn = np.where(xp < Lx)[0]
 
@@ -382,14 +410,20 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
                 axt.set_xlim([0., Lx])
                 axt.set_ylim([0., Ly])
                 plt.title(t)
-    
+
     print("Time: %f. Particles inside: %e" %(t, np.sum(isIn)))
     print("End of transport.")
 
-    return arrival_time, t_in_incl
+    return arrival_times, t_in_incl
 
 #####
 def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
+    '''Solves the transport of a line of concentration initially at the
+       left integrating the particles' path along the streamlines..
+
+       Returns the arrival times of the particles to the right boundary
+       and data about the time spent in the inclusions.'''
+
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     xp = np.zeros(Npart)
@@ -415,7 +449,7 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
     x1 = np.arange(0., Lx + dx, dx) #faces' coordinates
     y1 = np.arange(0., Ly + dy, dy)
 
-    arrival_time = np.zeros(Npart)
+    arrival_times = np.zeros(Npart)
 
     i = 0
 
@@ -457,8 +491,8 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
         ix = (indy + indx*Ny)
 
-        t_in_incl = comp_time_in_incl(t_in_incl, incl_ind, isIn,
-                                      indx, indy, arrival_time)
+        t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
+                                        indx, indy, arrival_times)
 
         uxp = (ux[ix] + Ax[ix]*(xp[isIn] - x1[indx]))
         uyp = (uy[ix] + Ay[ix]*(yp[isIn] - y1[indy]))
@@ -468,11 +502,11 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
         xp[isIn] = xp[isIn] + ds*uxp/vp
         yp[isIn] = yp[isIn] + ds*uyp/vp
 
-        arrival_time[isIn] = arrival_time[isIn] + ds/vp
+        arrival_times[isIn] = arrival_times[isIn] + ds/vp
 
         #try:
         out = np.where(xp[isIn] - Lx >= 0.)
-        arrival_time[out] = arrival_time[out] - (xp[out] - Lx)/uxp[out]
+        arrival_times[out] = arrival_times[out] - (xp[out] - Lx)/uxp[out]
 
         #except:
             #ipdb.set_trace()
@@ -490,19 +524,20 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
         if i%1000 == 0:
             print("Last particle at: %e" %(np.min(xp)))
 
-        t_in_incl = comp_time_in_incl(t_in_incl, incl_ind, isIn,
-                                      indx, indy, arrival_time)
+        t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
+                                        indx, indy, arrival_times)
         isIn = np.where(xp < Lx)[0]
 
-    
 
-    print("Particles inside: %e" %( np.sum(isIn)))
+
+    print("Particles inside: %e" %(np.sum(isIn)))
     print("End of transport.")
 
-    return  arrival_time, t_in_incl
+    return  arrival_times, t_in_incl
 
 ####
 def plotXY(x, y, fig=None, ax=None, lin=None, allowClose=False):
+    '''Function to do Y vs X plots. '''
 
     if fig is None or ax is None:
         fig = plt.figure()
@@ -527,20 +562,23 @@ def plotXY(x, y, fig=None, ax=None, lin=None, allowClose=False):
         lin = None
     return fig, ax, lin
 ####
-def plot2D(C, Nx, Ny, Lx, Ly, fig=None, ax=None, title=None, allowClose=False):
+def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
+    '''Function to do 2 dimensional plots of cell centerd or face centered
+       varibles.'''
 
     if fig is None or ax is None:
         fig = plt.figure()
         ax = fig.gca()
 
     #Create X and Y meshgrid
+    Lx, Ly, Nx, Ny = unpack_grid(grid)
     dx = Lx/Nx
     dy = Ly/Ny
 
     # xx, yy need to be +1 the shape of C because
     # pcolormesh needs the quadrilaterals.
     # Otherwise the last column is ignored.
-    #see: matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pcolor
+    # See: matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pcolor
     cny, cnx = C.shape
 
     if cnx > Nx:      # x face centered
@@ -609,68 +647,52 @@ def load_data(filename):
     if fileending == 'dat':
         data = np.loadtxt(filename)
         Npart = len(data)
-        arrival_time = data
-        return  Npart, arrival_time # Npart, t_in_incl if imported from plk
+        arrival_times = data
+        return  Npart, arrival_times # Npart, t_in_incl if imported from plk
 
     elif fileending == 'plk':
         with open(filename, 'rb') as ff:
             data = pickle.load(ff)
             Npart = data[0]
             t_in_incl = data[1]
-            arrival_time = data[2]
-            return  Npart, t_in_incl, arrival_time
+            arrival_times = data[2]
+            return  Npart, t_in_incl, arrival_times
 
 ################
-def time_distributions(Npart, time_in_incl, writeit=False, fname=None):
-    '''Returns the cummulative time each particle spent in all
-       visited inclusions and the time particles spent in each inclusion.
-    '''
-
-    #dictionary with the total time each particle spent in any inclusion.
-    tt = {}
-    for ip in range(Npart):
-        tt[ip] = 0.0
+def time_per_inclusion(time_in_incl, saveit=False, filename=None):
+    """ Given the dictionary whith the time at which each particle entered
+        and exited each inclusions, returns the time each particle spent
+        in each inclusion in a matrix format suitable to calculate
+        histograms.
+        Optionally, the data is saved as a text file.
+    """
+    #First the total time each particle spent in each inclusion is computed.
+    tot_time_in_incl = total_time_in_incl(time_in_incl)
 
     #dictionary with the time particles spent in each inclusion.
     incl_times = {}
-
     i = 0
-    tot_time_in_incl = total_time_in_incl(time_in_incl)
     for incl in tot_time_in_incl:
-        incl_times[i] = np.array(list(incl.values()))
-
-        tt = {key: tt.get(key, 0) + incl.get(key, 0)
-              for key in set(tt) | set(incl)}
-
+        incl_times[i] = np.concatenate(list(incl.values()))
         i = i + 1
 
-    particle_times = np.concatenate(np.vstack(list(tt.values())))
+    if saveit:
 
-    if writeit:
-    #Write time distribution in each particle.
-        import pandas as pd
+        if filename is None:
+            filename = 'incl-times.dat'
+        else:
+            filename = filename + '-incl-times.dat'
 
-        df = pd.DataFrame.from_dict(incl_times, orient='index')
-        df = df.transpose()
-        df.columns = ((str(i + 1)  for i in list(incl_times.keys())))
-        df.rename(columns={df.columns[0]:'#1'}, inplace=True)
+        from itertools import zip_longest
 
-        try:
-            outfile = fname + '-time-incl.dat'
-        except:
-            outfile = 'time-incl.dat'
+        import csv
+        with open(filename, 'w') as ff:
+            writer = csv.writer(ff, delimiter=' ')
+            # I whished I knew why this works...
+            for values in zip_longest(*list(incl_times.values())):
+                writer.writerow(np.asarray(values))
 
-        df.to_csv(outfile, sep=' ', na_rep='?', index=False)
-
-     #writes all particle times.
-        try:
-            outfile = fname + '-time-part.dat'
-        except:
-            outfile = 'time-part.dat'
-
-        np.savetxt(outfile, particle_times, delimiter=' ')
-
-    return incl_times, particle_times
+    return incl_times
 
 ################
 def inclusions_histograms(incl_times, showfig=True, savefig=False,
@@ -695,6 +717,7 @@ def inclusions_histograms(incl_times, showfig=True, savefig=False,
 ################
 def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
               savedata=False, figname='zz', figformat='pdf'):
+    '''Plots the histogram of the data.'''
 
     vals, edges, _ = plt.hist(data, bins=bins, normed=True)
     plt.xlabel('time')
@@ -722,7 +745,7 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
     plt.close()
     return True
 ################
-def postprocess(fname, writeit=True, showfig=False,
+def postprocess(fname, saveit=True, showfig=False,
                 savepartfig=True, saveinclfig=False, figformat='pdf',
                 bins='auto'):
     """Post process from plk file. Computes the histograms for
@@ -731,8 +754,8 @@ def postprocess(fname, writeit=True, showfig=False,
 
     Npart, t_in_incl = load_data(fname + '.plk')
 
-    incl_times, particle_times = time_distributions(Npart, t_in_incl,
-                                                    writeit=writeit,
+    incl_times, particle_times = time_per_inclusion(Npart, t_in_incl,
+                                                    saveit=saveit,
                                                     fname=fname)
 
     #particle histogram
@@ -747,7 +770,7 @@ def postprocess(fname, writeit=True, showfig=False,
                               figformat=figformat, bins=bins)
     return True
 ################
-def postprocess_all(writeit=True, showfig=False,
+def postprocess_all(saveit=True, showfig=False,
                     savepartfig=True, saveinclfig=False, figformat='pdf',
                     bins='auto'):
     """ Post process al the cases in a folder."""
@@ -757,8 +780,8 @@ def postprocess_all(writeit=True, showfig=False,
     files = os.listdir()
     for file in files:
         if file.endswith('plk'):
-            fname  = os.path.splitext(file)[0]
-            postprocess(fname, writeit=writeit, showfig=showfig,
+            fname = os.path.splitext(file)[0]
+            postprocess(fname, saveit=saveit, showfig=showfig,
                         savepartfig=savepartfig, saveinclfig=saveinclfig,
                         figformat=figformat, bins=bins)
 ################
@@ -768,55 +791,54 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     It is equivalent to prescribed flow on the left and right
     boundaries and no flow on top and bottom boundaries.'''
 
-    isPeriodic = False #TO DO
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     dx = Lx/(Nx-1)
     dy = Ly/(Ny-1)
-    dx2 = dx*dx
-    dy2 = dy*dy
     Np = Nx*Ny
 
     D1x, D2x, D1y, D2y = fd_mats(Nx, Ny, dx, dy)
 
     Y = np.log(kperm).reshape(Np, order='F')
-    #(aa.T*bb).T
-    Kmat = D1x.multiply(D1x*Y) + D1y.multiply(D1y*Y)
-    #Kmat = (D1x.*(D1x.dot(Y))).T + (D1y.T*(D1y.dot(Y))).T
-    #Kmat = bsxfun(@times, D1x*Y, D1x) + bsxfun(@times, D1z*Y, D1z)
+    Kmat = (D1x.multiply((D1x*Y).reshape(Np, 1)) +
+            D1y.multiply((D1y*Y).reshape(Np, 1)))
 
     Amat = D2y + D2x - Kmat
     RHS = np.zeros(Np)
     #BC
     #
-    #Top boundary
-    Amat[0:Np:Ny,:] = 0.0
-    idx = np.arange(0, Np, Ny)
-    Amat[idx, idx] = 1.0
-    RHS[0:Np:Ny] = Ly
-    #
-    #Bottom boundary
-    Amat[Ny-1:Np:Ny,:] = 0.0
-    idx = np.arange(Ny-1, Np, Ny)
-    Amat[idx,idx] = 1.0
-    RHS[Ny-1:Np:Ny] = 0.0
+    if isPeriodic:
+        #TO DO
+        print('stream_function: periodic b. c. not implemented')
+    else:
+        #Top boundary
+        Amat[0:Np:Ny, :] = 0.0
+        idx = np.arange(0, Np, Ny)
+        Amat[idx, idx] = 1.0
+        RHS[0:Np:Ny] = Ly
+        #
+        #Bottom boundary
+        Amat[Ny-1:Np:Ny, :] = 0.0
+        idx = np.arange(Ny-1, Np, Ny)
+        Amat[idx, idx] = 1.0
+        RHS[Ny-1:Np:Ny] = 0.0
     #
     #Left boundary
-    Amat[0:Ny,:] = 0.0
+    Amat[0:Ny, :] = 0.0
     idx = np.arange(0, Ny, 1)
-    Amat[idx,idx] = 1.0
-    RHS[0:Ny] = np.arange(0.,Ly+dy,dy)[::-1] #(Ly:-dy:0)
+    Amat[idx, idx] = 1.0
+    RHS[0:Ny] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
     #
     #Right boundary
     Amat[Np-Ny:Np, :] = 0.0
     idx = np.arange(Np-Ny, Np, 1)
-    Amat[idx,idx] = 1.0;
-    RHS[Np-Ny:Np] = np.arange(0.,Ly+dy,dy)[::-1] #(Ly:-dy:0)
+    Amat[idx, idx] = 1.0
+    RHS[Np-Ny:Np] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
 
     psi = lgsp.spsolve(Amat, RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
-        plot2D(psi, Nx, Ny, Lx, Ly, title='psi', allowClose=True)
-    #
+        plot2D(grid, psi, title='psi', allowClose=True)
+
     return psi
 ################
 def fd_mats(Nx, Ny, dx, dy):
@@ -904,8 +926,13 @@ def fd_mats(Nx, Ny, dx, dy):
 
     return D1x, D2x, D1y, D2y
 ################
-def comp_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
-
+def update_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
+    """ Given the particles inside the domain (isIn), the indexes of
+        the cells where the poarticles are (indx, indy), the indexes
+        of the cells inside incluisions (incl_ind), and the current time
+        (per particle if integrating along streamlines) (time), updates
+        the time the particle entered and/or exited each inclusion.
+    """
     #Auxiliary array with the numbers of the inclusions
     #where particles are. Inclusion 0 is the matrix.
     aux1 = incl_ind[[indy], [indx]].toarray()[0]
@@ -927,22 +954,146 @@ def comp_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
     return t_in_incl
 ################
 def total_time_in_incl(t_in_incl):
+    """ Given the dictionary whith the time at which each particle entered
+        and exited each inclusion, returns the total time spent for each
+        particle in each inclusion.
+    """
     # total time of particles in inclusions
     num_incl = len(t_in_incl)
     incl = np.arange(0, num_incl, 1)
-    for dic1, incl in zip(t_in_incl, incl):
-        t_in_incl[incl] = {k:np.diff(v) for k,v in dic1.items()}
+    tot_time_in_incl = t_in_incl.copy()
 
-    return t_in_incl
+    for dic1, incl in zip(tot_time_in_incl, incl):
+        tot_time_in_incl[incl] = {k:np.diff(v) for k, v in dic1.items()}
+
+    return tot_time_in_incl
 ################
-def compute_cbtc(particle_times):
-    cbtc_time = np.sort(particle_times)
-    Npart = particle_times.shape[0]
-    cbtc =  np.cumsum(np.ones(Npart))/Npart
+def compute_cbtc(arrival_times):
+    ''' Cummulative breakthrough curve from arrival times.'''
+    cbtc_time = np.sort(arrival_times)
+    Npart = arrival_times.shape[0]
+    cbtc = np.cumsum(np.ones(Npart))/Npart
 
     return cbtc_time, cbtc
 
 ################
-def mobile_inmmobile_time(t_in_incl, arrival_times):
-#TO DO
-    return tmobile, tinmobile
+def mobile_inmmobile_time(t_in_incl, arrival_times, filename=None, saveit=False):
+
+    #adds up the time spent in each inclusion
+
+    t_immobile = np.zeros(arrival_times.shape[0])
+    for incl in t_in_incl:
+        for part in incl:
+            t_immobile[part] = t_immobile[part] + np.diff(incl[part])
+
+    t_mobile = arrival_times - t_immobile
+
+    if saveit:
+        fname = 'mob.dat'
+        if filename is not None:
+            fname = filename + '-' + fname
+            np.savetxt(fname, t_mobile)
+
+        fname = 'immob.dat'
+        if filename is not None:
+            fname = filename + '-' + fname
+            np.savetxt(fname, t_immobile)
+
+    return t_mobile, t_immobile
+################
+def perm_matrix(grid, circles, Kfactor):
+    """Creates the permeability matrix and indexes of inclusions
+        given a set of circles."""
+
+    Lx, Ly, Nx, Ny = unpack_grid(grid)
+
+    kperm = np.ones([Ny, Nx])
+    incl_ind = np.zeros([Ny, Nx])
+    dx = Lx/Nx
+    dy = Ly/Ny
+    x1 = np.arange(dx/2.0, Lx, dx) #cell centers' coordinates
+    y1 = np.arange(dy/2.0, Ly, dy)
+    xx, yy = np.meshgrid(x1, y1)
+
+    i = 0
+
+    for circ in circles:
+        i = i + 1
+        x0 = circ['x']
+        y0 = circ['y']
+        r = circ['r']
+        mask = ((xx - x0)**2.0 + (yy - y0)**2.0) < r**2.0
+        kperm[mask] = Kfactor
+        incl_ind[mask] = i
+
+    return kperm, sp.csr_matrix(incl_ind)
+################
+def load_perm(filename):
+    """ Loads the permeability distribution in the given plk file."""
+
+
+    with open(filename, 'rb') as ff:
+        data = pickle.load(ff)
+        grid = data[0]
+        circles = data[1]
+        Kfactor = data[2]
+
+    return grid, circles, Kfactor
+################
+def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
+    """ Given the dictionary whith the time at which each particle entered
+        and exited each inclusion, returns the total inclusions that contain
+        at least one particle at a given time.
+    """
+
+    # total time of particles in inclusions
+    num_incl = len(t_in_incl)
+    incl_indx = np.arange(0, num_incl, 1)
+
+    # First we obtain the latest time a prticle exited an inclusion
+    #    Explanation:
+    #        {k:np.max(v) for k, v in dic1.items()} is a dictionary with
+    #        the maximum time per particle in inclusion incl.
+    #        with max( {---}.values() we get the maximum of all particles
+    #        Then with np.max([tmax, max(...)]) we update the maximum.
+
+    tmax = 0.0
+    for dic1, incl in zip(t_in_incl, incl_indx):
+        tmax = max([tmax, max({k:np.max(v) for k, v in dic1.items()}.values())])
+
+    # Then we divide the time interval in 1000 parts.
+    times = np.arange(0.0, tmax + tmax/1000, tmax/1000)
+    occ_incl = np.zeros(times.shape[0])
+    i = 0
+
+    #For each time we check how many inclusions are occupied.
+    for t in times:
+        for dic1, incl in zip(t_in_incl, incl_indx):
+            aux = np.asarray(list(dic1.values()))
+            occ_incl[i] = occ_incl[i] + np.any(
+                (aux[:, 0] <= t) & (aux[:, 1] >= t)
+            )
+
+        i = i + 1
+
+    if plotit:
+        plotXY(times, occ_incl, allowClose=True)
+       # vincl[i] = dd
+
+    if saveit:
+        fname = 'occ-incl.dat'
+
+        if filename is not None:
+            fname = filename + '-' + fname
+
+        np.savetxt(fname, np.matrix([times, occ_incl]).transpose())
+
+    return times, occ_incl
+################
+def plot_perm_from_file(filename):
+    '''Load permeability data from plk file and plots it.'''
+    #TO DO : check that file exists.
+
+    grid, circles, Kfactor = load_perm(filename)
+    kperm, _ = perm_matrix(grid, circles, Kfactor)
+    plot2D(grid, kperm, title='K', allowClose=True)
