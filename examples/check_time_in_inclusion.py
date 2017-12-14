@@ -51,5 +51,12 @@ dt = 0.001
 time_dt, t_in_incl_dt = II.transport(grid, incl_ind, Npart, ux, uy,
                                      tmax, dt, isPeriodic=False,
                                      plotit=False, CC=None)
-_, _ = II.mobile_inmmobile_time(t_in_incl_dt, time_dt,filename='zz', saveit=True)
+
+t_mob, t_immob = II.mobile_inmmobile_time(t_in_incl_dt, time_dt,
+                                          filename=None, saveit=True)
+
 _ = II.incl_per_time(t_in_incl_dt,saveit=True)
+
+tot_time_dt = II.total_time_in_incl(t_in_incl_dt)
+
+_ = II.free_trapped_arrival(time_dt, t_immob, saveit=True,filename=None)

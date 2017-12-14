@@ -17,7 +17,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
-import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -60,7 +59,9 @@ def run_simulation(*, Lx=1., Ny=50,
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
 
-    cbtc_time, cbtc = compute_cbtc(arrival_times)
+    cbtc_time, cbtc = compute_cbtc(arrival_times,
+                                   saveit=True, filename=filename)
+
     np.savetxt(filename + '-btc.dat', np.matrix([cbtc_time, cbtc]).transpose())
 
     with open(filename + '.plk', 'wb') as ff:
@@ -72,14 +73,17 @@ def run_simulation(*, Lx=1., Ny=50,
 
     if doPost:
 
-        _, _ = mobile_inmmobile_time(t_in_incl, arrival_times,
-                                     filename=filename, saveit=True)
+        _, t_immobile = mobile_inmmobile_time(t_in_incl, arrival_times,
+                                              filename=filename, saveit=True)
 
         _ = time_per_inclusion(t_in_incl,
                                saveit=True, filename=filename)
 
         _, _ = incl_per_time(t_in_incl, plotit=False,
                              saveit=True, filename=filename)
+
+        _, _, _, _= free_trapped_arrival(arrival_times, t_immobile,
+                                         saveit=True, filename=filename)
 
         print("End of postprocess.\n")
 
@@ -91,6 +95,9 @@ def setup_grid(Lx, Ny):
        array  with Lx, Ly, Nx, Ny. Ly is always 1 and Nx is
        computed so that the cells are squares.
     """
+
+    if Ny is None:
+        Ny = 0
 
     grid = np.zeros(1, dtype={'names':['Lx', 'Ly', 'Nx', 'Ny'], \
                 'formats':['float64', 'float64', 'int32', 'int32']})
@@ -129,7 +136,6 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=F
 
     radius = np.sqrt(np.float(Lx)/(2. * np.pi * np.float(n_incl)))
 
-
     if pack == 'sqr' or pack == 'tri':
         pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
                             radius=radius, packing=pack)
@@ -155,13 +161,16 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=F
     # Resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
     displacement = np.ceil(4.*radius)
-    circles = pore.circles
-    circles[:]['x'] = circles[:]['x'] + 0.5*displacement
+    pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
+
+    # if no discretization is given a 30th of the smallest inclusion's
+    # radius is chosen as cell size.
+    if Ny < 1:
+        Ny = np.int(30/pore.circles[:]['r'].min())
 
     grid = setup_grid(Lx + displacement, Ny)
 
-    kperm, incl_ind = perm_matrix(grid, circles, Kfactor)
-
+    kperm, incl_ind = perm_matrix(grid, pore.circles, Kfactor)
 
     # kperm[xx>-1] = 1.
     # kperm[yy>0.5] = 0.1
@@ -177,7 +186,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=F
             fname = filename + '-perm.plk'
 
         with open(fname, 'wb') as ff:
-            pickle.dump([grid, circles, Kfactor], ff, pickle.HIGHEST_PROTOCOL)
+            pickle.dump([grid, pore.circles, Kfactor],
+                        ff, pickle.HIGHEST_PROTOCOL)
 
     return kperm, incl_ind, grid
 
@@ -306,7 +316,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     if plotit and  CC is not None:
-        figt, axt = plot2D(grid, CC)
+        figt, axt, cbt = plot2D(grid, CC)
 
     t = 0.
     xp = np.zeros(Npart)
@@ -504,12 +514,8 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
         arrival_times[isIn] = arrival_times[isIn] + ds/vp
 
-        #try:
         out = np.where(xp[isIn] - Lx >= 0.)
         arrival_times[out] = arrival_times[out] - (xp[out] - Lx)/uxp[out]
-
-        #except:
-            #ipdb.set_trace()
 
         xp[xp < 0.] = 0.
 
@@ -609,7 +615,7 @@ def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(mesh, cax=cax)
+    cb = plt.colorbar(mesh, cax=cax)
 
     if title is not None:
         plt.title(title)
@@ -622,7 +628,7 @@ def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
         fig = None
         ax = None
 
-    return fig, ax
+    return fig, ax, cb
 ################
 def number_of_grains(nix, niy, pack):
     """Computes number of grains according to the packing"""
@@ -800,10 +806,12 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     D1x, D2x, D1y, D2y = fd_mats(Nx, Ny, dx, dy)
 
     Y = np.log(kperm).reshape(Np, order='F')
-    Kmat = (D1x.multiply((D1x*Y).reshape(Np, 1)) +
-            D1y.multiply((D1y*Y).reshape(Np, 1)))
+    #Kmat = (D1x.multiply((D1x*Y).reshape(Np, 1)) +
+    #        D1y.multiply((D1y*Y).reshape(Np, 1)))
 
-    Amat = D2y + D2x - Kmat
+    Amat = (D2y + D2x - (D1x.multiply((D1x*Y).reshape(Np, 1)) +
+                         D1y.multiply((D1y*Y).reshape(Np, 1)))).tolil()
+
     RHS = np.zeros(Np)
     #BC
     #
@@ -835,10 +843,14 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     Amat[idx, idx] = 1.0
     RHS[Np-Ny:Np] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
 
-    psi = lgsp.spsolve(Amat, RHS).reshape(Ny, Nx, order='F')
+    psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
-        plot2D(grid, psi, title='psi', allowClose=True)
-
+        fig, ax, cb = plot2D(grid, kperm, title='psi', allowClose=False)
+        cb.remove()
+        x1 = np.arange(0.0, Lx+dx, dx)
+        y1 = np.arange(0.0, Ly+dy, dy)
+        xx, yy = np.meshgrid(x1, y1)
+        ax.contour(xx, yy, psi, 21, linewidths=0.5, colors='y')
     return psi
 ################
 def fd_mats(Nx, Ny, dx, dy):
@@ -968,12 +980,17 @@ def total_time_in_incl(t_in_incl):
 
     return tot_time_in_incl
 ################
-def compute_cbtc(arrival_times):
+def compute_cbtc(arrival_times, saveit=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
     cbtc_time = np.sort(arrival_times)
     Npart = arrival_times.shape[0]
     cbtc = np.cumsum(np.ones(Npart))/Npart
+    if saveit:
+        fname = 'cbtc.dat'
+        if filename is not None:
+            fname = filename + '-' + fname
 
+        np.savetxt(fname, np.matrix([cbtc_time, cbtc]).transpose())
     return cbtc_time, cbtc
 
 ################
@@ -992,12 +1009,14 @@ def mobile_inmmobile_time(t_in_incl, arrival_times, filename=None, saveit=False)
         fname = 'mob.dat'
         if filename is not None:
             fname = filename + '-' + fname
-            np.savetxt(fname, t_mobile)
+
+        np.savetxt(fname, t_mobile)
 
         fname = 'immob.dat'
         if filename is not None:
             fname = filename + '-' + fname
-            np.savetxt(fname, t_immobile)
+
+        np.savetxt(fname, t_immobile)
 
     return t_mobile, t_immobile
 ################
@@ -1097,3 +1116,31 @@ def plot_perm_from_file(filename):
     grid, circles, Kfactor = load_perm(filename)
     kperm, _ = perm_matrix(grid, circles, Kfactor)
     plot2D(grid, kperm, title='K', allowClose=True)
+################
+def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
+                         filename=None):
+    """Given the arrival time and the immobile time of all particles,
+        returns the arrival times of particles that visited at least
+        one inclusion (trapped) and of those that did not visit any
+        inclusion (free).
+        Optionally, the data is saved as a text file.
+
+    """
+    if filename is None:
+        filename = ''
+    else:
+        filename = filename + '-'
+    
+    trapped = t_immobile > 0.
+
+    arrivals_trapped = arrival_times[trapped]
+    arrivals_free = arrival_times[~ trapped]
+
+    traptime, trapcbtc = compute_cbtc(arrivals_trapped,
+                                      saveit=saveit, filename=filename + 'trap')
+    
+    freetime, freecbtc = compute_cbtc(arrivals_free,
+                                      saveit=saveit, filename=filename + 'free')
+
+
+    return traptime, trapcbtc, freetime, freecbtc
