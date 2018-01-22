@@ -675,9 +675,14 @@ def time_per_inclusion(time_in_incl, saveit=False, filename=None):
     #dictionary with the time particles spent in each inclusion.
     incl_times = {}
     i = 0
+
     for incl in tot_time_in_incl:
-        incl_times[i] = np.concatenate(list(incl.values()))
-        i = i + 1
+        vals = list(incl.values())
+        if len(vals)>0:
+            incl_times[i] = np.concatenate(vals)
+            i = i + 1
+        else:
+            incl_times[i] = 0
 
     if saveit:
 
@@ -761,7 +766,8 @@ def postprocess_from_file(fname, savedata=True, savefig=False,
     """
 
     Npart, t_in_incl, arrival_times = load_data(fname + '.plk')
-    postprocess(Npart, t_in_incl, arrival_times, fname='',
+
+    postprocess(Npart, t_in_incl, arrival_times, fname=fname,
                 savedata=savedata, savefig=savefig,
                 showfig=showfig, figformat=figformat,
                 bins=bins, dofullpostp=dofullpostp)
@@ -1114,7 +1120,7 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     num_incl = len(t_in_incl)
     incl_indx = np.arange(0, num_incl, 1)
 
-    # First we obtain the latest time a prticle exited an inclusion
+    # First we obtain the latest time a particle exited an inclusion
     #    Explanation:
     #        {k:np.max(v) for k, v in dic1.items()} is a dictionary with
     #        the maximum time per particle in inclusion incl.
