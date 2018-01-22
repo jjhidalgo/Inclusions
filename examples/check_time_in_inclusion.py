@@ -60,3 +60,5 @@ _ = II.incl_per_time(t_in_incl_dt,saveit=True)
 tot_time_dt = II.total_time_in_incl(t_in_incl_dt)
 
 _ = II.free_trapped_arrival(time_dt, t_immob, saveit=True,filename=None)
+
+_ = II.inclusion_per_particle(t_in_incl_dt, Npart, saveit=True, filename=None)

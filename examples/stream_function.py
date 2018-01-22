@@ -18,12 +18,6 @@ r = 0.1
 Kfactor = 0.1
 mask = ((xx - 0.5)**2.0 + (yy - 0.5)**2.0) < r**2.0
 kperm[mask] = Kfactor
+
 psi = stream_function(grid, kperm, isPeriodic=False, plotPsi=True)
-plt.figure()
-x1 = np.arange(0., Lx + dx, dx)
-y1 = np.arange(0., Ly + dy, dy)
-xx, yy =np.meshgrid(x1, y1)
-plt.contour(xx, yy, psi, 100)
-plt.show()
-input("Dale enter y cierro...")
-plt.close()
+

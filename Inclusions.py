@@ -3,7 +3,7 @@
     permeability field can contain circular inclusions arranged regularly or
     randomly.
 
-    Author: Juan J. Hidalgo.
+    Author: Juan J. Hidalgo, IDAEA-CSIC, Barcelona, Spain.
     Acknowledgements:
         Project MHetScale (FP7-IDEAS-ERC-617511)
             European Research Council
@@ -17,6 +17,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
+import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -73,17 +74,10 @@ def run_simulation(*, Lx=1., Ny=50,
 
     if doPost:
 
-        _, t_immobile = mobile_inmmobile_time(t_in_incl, arrival_times,
-                                              filename=filename, saveit=True)
-
-        _ = time_per_inclusion(t_in_incl,
-                               saveit=True, filename=filename)
-
-        _, _ = incl_per_time(t_in_incl, plotit=False,
-                             saveit=True, filename=filename)
-
-        _, _, _, _= free_trapped_arrival(arrival_times, t_immobile,
-                                         saveit=True, filename=filename)
+        postprocess(Npart, t_in_incl, arrival_times, fname=filename,
+                   savedata=True, savefig=False,
+                   showfig=False, figformat='pdf',
+                   bins='auto', dofullpostp=False)
 
         print("End of postprocess.\n")
 
@@ -599,8 +593,8 @@ def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
 
     else:              #cell centered
 
-        x1 = np.arange(0., Lx + dx, dx)
-        y1 = np.arange(0., Ly + dy, dy)
+        x1 = np.arange(0., Lx + dx/2., dx)
+        y1 = np.arange(0., Ly + dy/2., dy)
 
     xx, yy = np.meshgrid(x1, y1)
 
@@ -649,14 +643,17 @@ def load_data(filename):
         a pickled file (.plk)
     """
 
-    fileending = filename.partition('.')[2]
-    if fileending == 'dat':
+    import os.path as ospath
+    
+    _, fileending = ospath.splitext(filename)
+
+    if fileending == '.dat':
         data = np.loadtxt(filename)
         Npart = len(data)
         arrival_times = data
         return  Npart, arrival_times # Npart, t_in_incl if imported from plk
 
-    elif fileending == 'plk':
+    elif fileending == '.plk':
         with open(filename, 'rb') as ff:
             data = pickle.load(ff)
             Npart = data[0]
@@ -685,20 +682,27 @@ def time_per_inclusion(time_in_incl, saveit=False, filename=None):
     if saveit:
 
         if filename is None:
-            filename = 'incl-times.dat'
+            fname = 'incl-times.dat'
         else:
-            filename = filename + '-incl-times.dat'
+            fname = filename + '-incl-times.dat'
 
         from itertools import zip_longest
 
         import csv
-        with open(filename, 'w') as ff:
+        with open(fname, 'w') as ff:
             writer = csv.writer(ff, delimiter=' ')
             # I whished I knew why this works...
             for values in zip_longest(*list(incl_times.values())):
                 writer.writerow(np.asarray(values))
 
-    return incl_times
+        if filename is None:
+            fname = 'trap-times.dat'
+        else:
+            fname = filename + '-trap-times.dat'
+
+        trap_times =  np.concatenate(np.array(list(incl_times.values())))
+        np.savetxt(fname, trap_times)
+        return incl_times, trap_times
 
 ################
 def inclusions_histograms(incl_times, showfig=True, savefig=False,
@@ -732,9 +736,7 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
 
     if savedata:
         filename = figname + '.dat'
-        edges = (edges[:-1] + edges[1:])/2.0
-        np.savetxt(filename, (edges, vals))
-
+        np.savetxt(filename, np.matrix([edges[:-1],edges[1:], vals]).transpose())
     if savefig:
         if figformat == 'pdf':
             print(figname)
@@ -744,41 +746,79 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
             tikz_save(figname + '.tex')
 
     if showfig:
-        plt.show()
         plt.ion()
+        plt.show()
         input("Dale enter y cierro...")
 
     plt.close()
     return True
 ################
-def postprocess(fname, saveit=True, showfig=False,
-                savepartfig=True, saveinclfig=False, figformat='pdf',
-                bins='auto'):
+def postprocess_from_file(fname, savedata=True, savefig=False,
+                          showfig=False, figformat='pdf',
+                          bins='auto',dofullpostp=False):
     """Post process from plk file. Computes the histograms for
        particles and inclusions. Saves data and/or figures.
     """
 
-    Npart, t_in_incl = load_data(fname + '.plk')
+    Npart, t_in_incl, arrival_times = load_data(fname + '.plk')
+    postprocess(Npart, t_in_incl, arrival_times, fname='',
+                savedata=savedata, savefig=savefig,
+                showfig=showfig, figformat=figformat,
+                bins=bins, dofullpostp=dofullpostp)
+    return True
 
-    incl_times, particle_times = time_per_inclusion(Npart, t_in_incl,
-                                                    saveit=saveit,
-                                                    fname=fname)
+################
+def postprocess(Npart, t_in_incl, arrival_times, fname='',
+                savedata=True, savefig=False,
+                showfig=False, figformat='pdf',
+                bins='auto', dofullpostp=False):
+    """Computes the histograms for
+       particles and inclusions. Saves data and/or figures.
+    """
 
+    _, t_immobile = mobile_inmmobile_time(t_in_incl, arrival_times,
+                                          filename=fname, saveit=savedata)
+
+    incl_times, trap_times = time_per_inclusion(t_in_incl,
+                                       saveit=savedata, filename=fname)
+
+    figname = fname + '-trap-dist'
+    plot_hist(trap_times, title='', bins='auto',
+              showfig=showfig, savefig=savefig,
+              savedata=savedata, figname=figname)
+
+
+    _, _ = incl_per_time(t_in_incl, plotit=showfig,
+                             saveit=savedata, filename=fname)
+
+    _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
+                                         saveit=savedata, filename=fname)
+
+    aa = inclusion_per_particle(t_in_incl, Npart,
+                                    saveit=savedata, filename=fname)
+    #aa -->   number of inclusions visited by each particle.
+    figname = fname + '-trap-events'
+    plot_hist(aa, title='', bins='auto',
+              showfig=showfig, savefig=savefig, savedata=savedata,
+              figname=figname)
+
+
+    if dofullpostp:
     #particle histogram
-    if showfig or savepartfig:
-        plot_hist(particle_times, title=fname + ' particles', bins=bins,
-                  showfig=showfig, savefig=savepartfig, savedata=False,
-                  figname=fname + '-part-hist', figformat=figformat)
+        plot_hist(trap_times, title=fname + ' particles', bins=bins,
+              showfig=showfig, savefig=savepartfig, savedata=savedata,
+              figname=fname + '-part-hist', figformat=figformat)
 
-    if showfig or saveinclfig:
+
         inclusions_histograms(incl_times, showfig=showfig, savefig=saveinclfig,
                               savedata=False, fname=fname,
                               figformat=figformat, bins=bins)
     return True
 ################
-def postprocess_all(saveit=True, showfig=False,
-                    savepartfig=True, saveinclfig=False, figformat='pdf',
-                    bins='auto'):
+def postprocess_all(fname, savedata=True, savefig=False,
+                    showfig=False, figformat='pdf',
+                    bins='auto',dofullpostp=False):
+
     """ Post process al the cases in a folder."""
 
     import os as os
@@ -787,9 +827,10 @@ def postprocess_all(saveit=True, showfig=False,
     for file in files:
         if file.endswith('plk'):
             fname = os.path.splitext(file)[0]
-            postprocess(fname, saveit=saveit, showfig=showfig,
-                        savepartfig=savepartfig, saveinclfig=saveinclfig,
-                        figformat=figformat, bins=bins)
+            postprocess_from_file(fname, savedata=savedata, savefig=savefig,
+                          showfig=showfig, figformat='pdf',
+                                  bins='auto', dofullpostp=dofullpostp)
+    return True
 ################
 def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     '''Compute the stream function.
@@ -842,8 +883,9 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     idx = np.arange(Np-Ny, Np, 1)
     Amat[idx, idx] = 1.0
     RHS[Np-Ny:Np] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
-
+    
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
+
     if plotPsi:
         fig, ax, cb = plot2D(grid, kperm, title='psi', allowClose=False)
         cb.remove()
@@ -851,6 +893,8 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
         y1 = np.arange(0.0, Ly+dy, dy)
         xx, yy = np.meshgrid(x1, y1)
         ax.contour(xx, yy, psi, 21, linewidths=0.5, colors='y')
+        input("Dale enter y cierro...")
+        plt.close()
     return psi
 ################
 def fd_mats(Nx, Ny, dx, dy):
@@ -1144,3 +1188,21 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
 
 
     return traptime, trapcbtc, freetime, freecbtc
+################
+def inclusion_per_particle(time_in_incl, Npart, saveit=False, filename=None):
+    """ Given the dictionary whith the time at which each particle entered
+        and exited each inclusions, returns the number of inclusons visited
+        by each particle.
+        Optionally, the data is saved as a text file.
+    """
+    incl_per_part = np.zeros(Npart)
+    for incl in time_in_incl:
+        incl_per_part[list(incl.keys())] = incl_per_part[list(incl.keys())] + 1
+
+    if saveit:
+        fname = 'visited-incl.dat'
+        if filename is not None:
+            fname = filename + '-' + fname
+            
+        np.savetxt(fname, incl_per_part)
+    return incl_per_part
