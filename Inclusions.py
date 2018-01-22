@@ -815,7 +815,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
                               figformat=figformat, bins=bins)
     return True
 ################
-def postprocess_all(fname, savedata=True, savefig=False,
+def postprocess_all(savedata=True, savefig=False,
                     showfig=False, figformat='pdf',
                     bins='auto',dofullpostp=False):
 
@@ -827,6 +827,7 @@ def postprocess_all(fname, savedata=True, savefig=False,
     for file in files:
         if file.endswith('plk'):
             fname = os.path.splitext(file)[0]
+            print(fname + '...')
             postprocess_from_file(fname, savedata=savedata, savefig=savefig,
                           showfig=showfig, figformat='pdf',
                                   bins='auto', dofullpostp=dofullpostp)
