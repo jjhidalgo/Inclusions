@@ -644,7 +644,7 @@ def load_data(filename):
     """
 
     import os.path as ospath
-    
+
     _, fileending = ospath.splitext(filename)
 
     if fileending == '.dat':
@@ -734,28 +734,31 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
               savedata=False, figname='zz', figformat='pdf'):
     '''Plots the histogram of the data.'''
 
-    vals, edges, _ = plt.hist(data, bins=bins, normed=True)
-    plt.xlabel('time')
-    plt.ylabel('freq')
-    plt.title(title)
+    vals, edges = np.histogram(data, bins=bins, normed=True)
+
+    if showfig:
+        _, _, _ = plotXY((edges[:-1] + edges[1:])/2., vals,
+                         allowClose= not savefig)
+        if savefig:
+
+            plt.xlabel('time')
+            plt.ylabel('freq')
+            plt.title(title)
+
+            if figformat == 'pdf':
+                plt.savefig(figname + '.pdf', format='pdf')
+            if figformat == 'tikz':
+                from matplotlib2tikz import save as tikz_save
+                tikz_save(figname + '.tex')
+
+            input("Dale enter y cierro...")
+            plt.close()
+
 
     if savedata:
         filename = figname + '.dat'
         np.savetxt(filename, np.matrix([edges[:-1],edges[1:], vals]).transpose())
-    if savefig:
-        if figformat == 'pdf':
-            print(figname)
-            plt.savefig(figname + '.pdf', format='pdf')
-        if figformat == 'tikz':
-            from matplotlib2tikz import save as tikz_save
-            tikz_save(figname + '.tex')
 
-    if showfig:
-        plt.ion()
-        plt.show()
-        input("Dale enter y cierro...")
-
-    plt.close()
     return True
 ################
 def postprocess_from_file(fname, savedata=True, savefig=False,
@@ -890,7 +893,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     idx = np.arange(Np-Ny, Np, 1)
     Amat[idx, idx] = 1.0
     RHS[Np-Ny:Np] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
-    
+
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
 
     if plotPsi:
@@ -1181,7 +1184,7 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
         filename = ''
     else:
         filename = filename + '-'
-    
+
     trapped = t_immobile > 0.
 
     arrivals_trapped = arrival_times[trapped]
@@ -1189,7 +1192,7 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
 
     traptime, trapcbtc = compute_cbtc(arrivals_trapped,
                                       saveit=saveit, filename=filename + 'trap')
-    
+
     freetime, freecbtc = compute_cbtc(arrivals_free,
                                       saveit=saveit, filename=filename + 'free')
 
@@ -1210,6 +1213,6 @@ def inclusion_per_particle(time_in_incl, Npart, saveit=False, filename=None):
         fname = 'visited-incl.dat'
         if filename is not None:
             fname = filename + '-' + fname
-            
+
         np.savetxt(fname, incl_per_part)
     return incl_per_part
