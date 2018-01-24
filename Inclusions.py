@@ -812,6 +812,9 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               figname=figname)
 
 
+    _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
+                                      saveit=savedata, filename=fname)
+
     if dofullpostp:
     #particle histogram
         plot_hist(trap_times, title=fname + ' particles', bins=bins,
@@ -822,6 +825,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
         inclusions_histograms(incl_times, showfig=showfig, savefig=saveinclfig,
                               savedata=False, fname=fname,
                               figformat=figformat, bins=bins)
+
     return True
 ################
 def postprocess_all(savedata=True, savefig=False,
