@@ -786,9 +786,9 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               showfig=showfig, savefig=savefig,
               savedata=savedata, figname=figname)
 
-
-    _, _ = incl_per_time(t_in_incl, plotit=showfig,
-                             saveit=savedata, filename=fname)
+   # TO DO: Verify.
+   # _, _ = incl_per_time(t_in_incl, plotit=showfig,
+   #                          saveit=savedata, filename=fname)
 
     _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
                                          saveit=savedata, filename=fname)
@@ -1138,7 +1138,8 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
 
     #For each time we check how many inclusions are occupied.
     for t in times:
-        isOccupied = np.where( (flat_aa[:, 0] < t) & (flat_aa[:, 1] > t) )
+        isOccupied = np.where( (residence_times[:, 0] < t)
+                             & (residence_times[:, 1] > t))
         occ_incl[i] = np.sum(np.asarray(isOccupied)>0)
         i = i + 1
 
