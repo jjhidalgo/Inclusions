@@ -61,15 +61,13 @@ def run_simulation(*, Lx=1., Ny=50,
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
 
     cbtc_time, cbtc = compute_cbtc(arrival_times,
-                                   saveit=True, filename=filename)
+                                   saveit=True, showfig=False, savefig=False,
+                                   filename=filename)
 
-    np.savetxt(filename + '-btc.dat', np.matrix([cbtc_time, cbtc]).transpose())
 
     with open(filename + '.plk', 'wb') as ff:
         pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
 
-    if plotBTC:
-        _, _, _ = plotXY(cbtc_time, 1. - cbtc, allowClose=True)
     print("End of simulation.\n")
 
     if doPost:
@@ -336,7 +334,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     num_incl = incl_ind.max().astype(int)
 
 
-    #time of each partile in each inclusion
+    #time of each particle in each inclusion
     # It contains nincl dictionaries
     # Each dictionary contains the particle and the time spent.
     t_in_incl = []
@@ -662,21 +660,23 @@ def load_data(filename):
             return  Npart, t_in_incl, arrival_times
 
 ################
-def time_per_inclusion(time_in_incl, saveit=False, filename=None):
+def time_per_inclusion(t_in_incl, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
         and exited each inclusions, returns the time each particle spent
         in each inclusion in a matrix format suitable to calculate
         histograms.
-        Optionally, the data is saved as a text file.
+        It also returns all times in a single array.
+        Optionally, the data is saved as a two text files
+        incl-times.dat and trap-times.dat).       
     """
     #First the total time each particle spent in each inclusion is computed.
-    tot_time_in_incl = total_time_in_incl(time_in_incl)
+    tot_t_in_incl = total_time_in_incl(t_in_incl)
 
     #dictionary with the time particles spent in each inclusion.
     incl_times = {}
     i = 0
 
-    for incl in tot_time_in_incl:
+    for incl in tot_t_in_incl:
         vals = list(incl.values())
         if len(vals)>0:
             incl_times[i] = np.concatenate(vals)
@@ -740,20 +740,8 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
         _, _, _ = plotXY((edges[:-1] + edges[1:])/2., vals,
                          allowClose= not savefig)
         if savefig:
-
-            plt.xlabel('time')
-            plt.ylabel('freq')
-            plt.title(title)
-
-            if figformat == 'pdf':
-                plt.savefig(figname + '.pdf', format='pdf')
-            if figformat == 'tikz':
-                from matplotlib2tikz import save as tikz_save
-                tikz_save(figname + '.tex')
-
-            input("Dale enter y cierro...")
-            plt.close()
-
+            save_fig(xlabel='time', ylabel='freq', title='title',
+                     figname=figname, figformat=figformat)
 
     if savedata:
         filename = figname + '.dat'
@@ -781,10 +769,12 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
                 savedata=True, savefig=False,
                 showfig=False, figformat='pdf',
                 bins='auto', dofullpostp=False):
-    """Computes the histograms for
-       particles and inclusions. Saves data and/or figures.
+    """Post process simulation data.
     """
-
+    _, _ = compute_cbtc(arrival_times, saveit=savedata,
+                        showfig=showfig, savefig=savefig,
+                        filename=fname)
+    
     _, t_immobile = mobile_inmmobile_time(t_in_incl, arrival_times,
                                           filename=fname, saveit=savedata)
 
@@ -803,17 +793,14 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
     _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
                                          saveit=savedata, filename=fname)
 
-    aa = inclusion_per_particle(t_in_incl, Npart,
-                                    saveit=savedata, filename=fname)
-    #aa -->   number of inclusions visited by each particle.
+    incl_per_part = inclusion_per_particle(t_in_incl, Npart, saveit=savedata,
+                                           filename=fname)
+
     figname = fname + '-trap-events'
-    plot_hist(aa, title='', bins='auto',
+    plot_hist(incl_per_part, title='', bins='auto',
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname)
 
-
-    _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
-                                      saveit=savedata, filename=fname)
 
     if dofullpostp:
     #particle histogram
@@ -1031,24 +1018,32 @@ def total_time_in_incl(t_in_incl):
     # total time of particles in inclusions
     num_incl = len(t_in_incl)
     incl = np.arange(0, num_incl, 1)
-    tot_time_in_incl = t_in_incl.copy()
+    tot_t_in_incl = t_in_incl.copy()
 
-    for dic1, incl in zip(tot_time_in_incl, incl):
-        tot_time_in_incl[incl] = {k:np.diff(v) for k, v in dic1.items()}
+    for dic1, incl in zip(tot_t_in_incl, incl):
+        tot_t_in_incl[incl] = {k:np.diff(v) for k, v in dic1.items()}
 
-    return tot_time_in_incl
+    return tot_t_in_incl
 ################
-def compute_cbtc(arrival_times, saveit=False, filename=None):
+def compute_cbtc(arrival_times, saveit=False,
+                 showfig=False, savefig=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
     cbtc_time = np.sort(arrival_times)
     Npart = arrival_times.shape[0]
-    cbtc = np.cumsum(np.ones(Npart))/Npart
+    cbtc = 1. - np.cumsum(np.ones(Npart))/Npart
     if saveit:
         fname = 'cbtc.dat'
         if filename is not None:
             fname = filename + '-' + fname
 
         np.savetxt(fname, np.matrix([cbtc_time, cbtc]).transpose())
+    if showfig:
+        _, _, _ = plotXY(cbtc_time, cbtc, allowClose=True)
+
+        if savefig:
+            save_fig(xlabel='time', ylabel='cbtc', title='',
+                     figname=fname, fogformat='pdf')
+
     return cbtc_time, cbtc
 
 ################
@@ -1127,16 +1122,14 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     num_incl = len(t_in_incl)
     incl_indx = np.arange(0, num_incl, 1)
 
-    # First we obtain the latest time a particle exited an inclusion
-    #    Explanation:
-    #        {k:np.max(v) for k, v in dic1.items()} is a dictionary with
-    #        the maximum time per particle in inclusion incl.
-    #        with max( {---}.values() we get the maximum of all particles
-    #        Then with np.max([tmax, max(...)]) we update the maximum.
+    # We build an array with all residence times
+    # (entrance and exit of each particle in each visited inclusion).
+    residence_times = [list(d.values()) for d in t_in_incl]
+    flatten = lambda l: [item for sublist in l for item in sublist]
+    residence_times = np.asarray(flatten(residence_times))
 
-    tmax = 0.0
-    for dic1, incl in zip(t_in_incl, incl_indx):
-        tmax = max([tmax, max({k:np.max(v) for k, v in dic1.items()}.values())])
+    #Latest timeat which an inclusion was occupied.
+    tmax = residence_times.max()
 
     # Then we divide the time interval in 1000 parts.
     times = np.arange(0.0, tmax + tmax/1000, tmax/1000)
@@ -1145,17 +1138,12 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
 
     #For each time we check how many inclusions are occupied.
     for t in times:
-        for dic1, incl in zip(t_in_incl, incl_indx):
-            aux = np.asarray(list(dic1.values()))
-            occ_incl[i] = occ_incl[i] + np.any(
-                (aux[:, 0] <= t) & (aux[:, 1] >= t)
-            )
-
+        isOccupied = np.where( (flat_aa[:, 0] < t) & (flat_aa[:, 1] > t) )
+        occ_incl[i] = np.sum(np.asarray(isOccupied)>0)
         i = i + 1
 
     if plotit:
         plotXY(times, occ_incl, allowClose=True)
-       # vincl[i] = dd
 
     if saveit:
         fname = 'occ-incl.dat'
@@ -1203,14 +1191,14 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
 
     return traptime, trapcbtc, freetime, freecbtc
 ################
-def inclusion_per_particle(time_in_incl, Npart, saveit=False, filename=None):
+def inclusion_per_particle(t_in_incl, Npart, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
         and exited each inclusions, returns the number of inclusons visited
         by each particle.
         Optionally, the data is saved as a text file.
     """
     incl_per_part = np.zeros(Npart)
-    for incl in time_in_incl:
+    for incl in t_in_incl:
         incl_per_part[list(incl.keys())] = incl_per_part[list(incl.keys())] + 1
 
     if saveit:
@@ -1220,3 +1208,20 @@ def inclusion_per_particle(time_in_incl, Npart, saveit=False, filename=None):
 
         np.savetxt(fname, incl_per_part)
     return incl_per_part
+################
+def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
+    '''Saves current figure.'''
+    
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+    if figformat == 'pdf':
+        plt.savefig(figname + '.pdf', format='pdf')
+    if figformat == 'tikz':
+        from matplotlib2tikz import save as tikz_save
+        tikz_save(figname + '.tex')
+
+    input("Dale enter y cierro...")
+    plt.close()
+################
