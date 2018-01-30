@@ -104,11 +104,11 @@ def unpack_grid(grid):
     return grid['Lx'][0], grid['Ly'][0], grid['Nx'][0], grid['Ny'][0]
 
 ################
-def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=False, saveit=True):
+def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=False, saveit=True, target_incl_area=0.2, radius=None):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
-       to increase the chance of achieving the target porosity.
+       to increase the chance of achieving the target inclusion area.
 
        Then the domain is resized by adding 3*radius on the left
        to avoid boundary effects.
@@ -126,7 +126,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=F
     n_incl_x = np.int(Lx*n_incl_y)
     n_incl = number_of_grains(n_incl_y, n_incl_x, pack)
 
-    radius = np.sqrt(np.float(Lx)/(2. * np.pi * np.float(n_incl)))
+    if radius is None:
+        radius = np.sqrt(target_incl_area/(np.pi*n_incl))
 
     if pack == 'sqr' or pack == 'tri':
         pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
@@ -144,7 +145,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=F
 
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
                             rmin=0.90*radius, rmax=0.90*radius,
-                            target_porosity=0.6, packing='rnd')
+                            target_porosity=1.-target_incl_area,
+                            packing='rnd')
 
         pore.ngrains_max = int(1.1*n_incl)
         pore.ntries_max = int(1e5)
@@ -1109,11 +1111,10 @@ def perm_matrix(grid, circles, Kfactor):
 
     return kperm, sp.csr_matrix(incl_ind)
 ################
-def load_perm(filename):
+def load_perm(fname):
     """ Loads the permeability distribution in the given plk file."""
 
-
-    with open(filename, 'rb') as ff:
+    with open(fname + '-perm.plk', 'rb') as ff:
         data = pickle.load(ff)
         grid = data[0]
         circles = data[1]
@@ -1123,8 +1124,8 @@ def load_perm(filename):
 ################
 def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
-        and exited each inclusion, returns the total inclusions that contain
-        at least one particle at a given time.
+        and exited each inclusion, returns the total number of inclusions
+        that contain at least one particle at a given time.
     """
 
     # total time of particles in inclusions
@@ -1154,7 +1155,7 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
         #                     & (residence_times[:, 1] > t))
         #occ_incl[i] = np.sum(np.asarray(isOccupied)>0)
         i = i + 1
-    ipdb.set_trace()
+
     if plotit:
         plotXY(times, occ_incl, allowClose=True)
 
@@ -1168,11 +1169,10 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
 
     return times, occ_incl
 ################
-def plot_perm_from_file(filename):
+def plot_perm_from_file(fname):
     '''Load permeability data from plk file and plots it.'''
     #TO DO : check that file exists.
-
-    grid, circles, Kfactor = load_perm(filename)
+    grid, circles, Kfactor = load_perm(fname)
     kperm, _ = perm_matrix(grid, circles, Kfactor)
     plot2D(grid, kperm, title='K', allowClose=True)
 ################
@@ -1237,4 +1237,40 @@ def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
 
     input("Dale enter y cierro...")
     plt.close()
+################
+def equivalent_permeability(grid, kperm, isPeriodic=False):
+    """Compute the  equivalent permeability of the medium.
+    """
+    bcc='head'
+    ux, _ = flow(grid, kperm, bcc, isPeriodic=isPeriodic, plotHead=False)
+    dy = grid['Ly']/grid['Ny']
+    gradH = 1./grid['Lx']
+    Q = np.sum(ux[:,-1])*dy
+
+    return Q/(grid['Ly']*gradH)
+################
+def equivalent_permeability_from_file(fname):
+    """Compute the equivalent permeability of the medium.
+       Data read from perm.plk file.
+    """
+    grid, circles, Kfactor = load_perm(fname)
+    kperm, _ = perm_matrix(grid, circles, Kfactor)
+
+    return equivalent_permeability(grid, kperm)
+################
+def inclusion_area(grid, circles, Kfactor):
+    '''Computes inclusions area.'''
+
+    kperm, _ = perm_matrix(grid, circles, Kfactor)
+    dx = grid['Lx']/grid['Nx']
+    # We do not take into account the displacement
+    radius = circles[0]['r']
+    displacement = np.ceil(4.*radius)
+    ndisp  = np.int(displacement/dx/2)
+    kperm = kperm[:,ndisp:-ndisp].flatten()
+
+    incl_area =  sum(kperm<1.)
+    total_area = sum(kperm>0.)
+
+    return incl_area/total_area
 ################
