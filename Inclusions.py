@@ -21,6 +21,7 @@ import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
+                   target_incl_area=0.5,radius=None,
                    bcc='head', isPeriodic=True, integrateInTime=True,
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
@@ -104,7 +105,9 @@ def unpack_grid(grid):
     return grid['Lx'][0], grid['Ly'][0], grid['Nx'][0], grid['Ny'][0]
 
 ################
-def permeability(grid, n_incl_y, Kfactor=1., pack='sqr', filename=None, plotit=False, saveit=True, target_incl_area=0.2, radius=None):
+def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
+                 target_incl_area=0.5, radius=None,
+                 filename=None, plotit=False, saveit=True):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
