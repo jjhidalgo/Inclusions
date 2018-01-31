@@ -17,7 +17,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
-import ipdb
+#import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -32,6 +32,8 @@ def run_simulation(*, Lx=1., Ny=50,
     grid = setup_grid(Lx, Ny)
 
     kperm, incl_ind, grid = permeability(grid, n_incl_y, Kfactor,
+                                         target_incl_area=target_incl_area,
+                                         radius=radius,
                                          pack=pack, filename=filename,
                                          plotit=plotPerm, saveit=True)
 
@@ -130,7 +132,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     n_incl = number_of_grains(n_incl_y, n_incl_x, pack)
 
     if radius is None:
-        radius = np.sqrt(target_incl_area/(np.pi*n_incl))
+        total_area = Lx*Ly
+        radius = np.sqrt((target_incl_area*total_area)/(np.pi*n_incl))
 
     if pack == 'sqr' or pack == 'tri':
         pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
@@ -145,7 +148,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         #displacement = (delta - throat)/2.
 
     elif pack == 'rnd':
-
+        print(target_incl_area)
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
                             rmin=0.90*radius, rmax=0.90*radius,
                             target_porosity=1.-target_incl_area,
@@ -632,11 +635,13 @@ def number_of_grains(nix, niy, pack):
 
     if pack == 'sqr':
         ngrains = nix*niy
-    else:
+    elif pack == 'tri':
         if nix%2 == 0:
             ngrains = (nix//2)*(niy - 1) + (nix//2)*niy
         else:
             ngrains = (nix//2)*(niy - 1) + (nix//2 + 1)*(niy)
+    elif pack == 'rnd':
+        ngrains = nix*niy
 
     return ngrains
 ################
