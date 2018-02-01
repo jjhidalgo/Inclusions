@@ -17,7 +17,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
-#import ipdb
+import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -148,7 +148,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         #displacement = (delta - throat)/2.
 
     elif pack == 'rnd':
-        print(target_incl_area)
+
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
                             rmin=0.90*radius, rmax=0.90*radius,
                             target_porosity=1.-target_incl_area,
@@ -670,7 +670,7 @@ def load_data(filename):
             return  Npart, t_in_incl, arrival_times
 
 ################
-def time_per_inclusion(t_in_incl, saveit=False, filename=None):
+def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
         and exited each inclusions, returns the time each particle spent
         in each inclusion in a matrix format suitable to calculate
@@ -679,20 +679,25 @@ def time_per_inclusion(t_in_incl, saveit=False, filename=None):
         Optionally, the data is saved as a two text files
         incl-times.dat and trap-times.dat).
     """
+
     #First the total time each particle spent in each inclusion is computed.
     tot_t_in_incl = total_time_in_incl(t_in_incl)
 
     #dictionary with the time particles spent in each inclusion.
     incl_times = {}
+    trapped_part = {}
     i = 0
-
     for incl in tot_t_in_incl:
         vals = list(incl.values())
         if len(vals)>0:
             incl_times[i] = np.concatenate(vals)
+            trapped_part[i] = list(incl.keys())
             i = i + 1
         else:
             incl_times[i] = 0
+    trapped_part = flatten_list(list(trapped_part.values()))
+    trapped_part = np.unique(np.array(trapped_part))
+    num_free_part  = Npart - trapped_part.shape[0]
 
     if saveit:
 
@@ -716,7 +721,11 @@ def time_per_inclusion(t_in_incl, saveit=False, filename=None):
             fname = filename + '-trap-times.dat'
 
         trap_times =  np.concatenate(np.array(list(incl_times.values())))
+        # adds as many zeros as free particles
+        trap_times =  np.concatenate((trap_times, np.zeros(num_free_part)))
+
         np.savetxt(fname, trap_times)
+
         return incl_times, trap_times
 
 ################
@@ -744,7 +753,7 @@ def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
               savedata=False, figname='zz', figformat='pdf'):
     '''Plots the histogram of the data.'''
 
-    vals, edges = np.histogram(data, bins=bins, normed=True)
+    vals, edges = np.histogram(data, bins=bins, density=True)
 
     if showfig:
         _, _, _ = plotXY((edges[:-1] + edges[1:])/2., vals,
@@ -797,7 +806,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               showfig=showfig, savefig=savefig,
               savedata=savedata, figname=figname)
 
-    incl_times, trap_times = time_per_inclusion(t_in_incl,
+    incl_times, trap_times = time_per_inclusion(t_in_incl, Npart,
                                        saveit=savedata, filename=fname)
 
     figname = fname + '-trap-dist'
@@ -1143,8 +1152,8 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     # We build an array with all residence times
     # (entrance and exit of each particle in each visited inclusion).
     residence_times = [list(d.values()) for d in t_in_incl]
-    flatten = lambda l: [item for sublist in l for item in sublist]
-    residence_times = np.asarray(flatten(residence_times))
+
+    residence_times = np.asarray(flatten_list(residence_times))
 
     #Latest timeat which an inclusion was occupied.
     tmax = residence_times.max()
@@ -1281,4 +1290,28 @@ def inclusion_area(grid, circles, Kfactor):
     total_area = sum(kperm>0.)
 
     return incl_area/total_area
+################
+def flatten_list(l):
+    '''Merge items in list with sublists.
+       From
+       https://stackoverflow.com/questions/952914/making-a-flat-list-out-of-list-of-lists-in-python
+    '''
+    return  [item for sublist in l for item in sublist]
+################
+def average_number_of_inclusions(kperm):
+    ''' Computes the average number of inclusions in the vertical and
+        horizontal directions'''
+    
+    h_aux = np.sum(np.abs(np.diff(kperm, axis=1))>0, axis=1)/2
+    v_aux = np.sum(np.abs(np.diff(kperm, axis=0))>0, axis=0)/2
+    
+    #mean in the whole domain
+    h_avg = np.mean(h_aux)
+    v_avg = np.mean(v_aux)
+    
+    #mean removing zeros
+    h_avg_nonzero = np.nanmean(np.where(h_aux!=0, h_aux, np.nan))
+    v_avg_nonzero = np.nanmean(np.where(v_aux!=0, v_aux, np.nan))
+
+    return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
