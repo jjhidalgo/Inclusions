@@ -33,7 +33,7 @@ def run_simulation(*, Lx=1., Ny=50,
 
     kperm, incl_ind, grid = permeability(grid, n_incl_y, Kfactor,
                                          target_incl_area=target_incl_area,
-                                         radius=radius,
+                                         radius=radius, isPeriodicK=isPeriodic,
                                          pack=pack, filename=filename,
                                          plotit=plotPerm, saveit=True)
 
@@ -108,7 +108,7 @@ def unpack_grid(grid):
 
 ################
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
-                 target_incl_area=0.5, radius=None,
+                 target_incl_area=0.5, radius=None, isPeriodicK=False,
                  filename=None, plotit=False, saveit=True):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
@@ -138,7 +138,12 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     if pack == 'sqr' or pack == 'tri':
         pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
                             radius=radius, packing=pack)
-        throat = (Ly - 2.0*np.float(n_incl_y)*radius)/(np.float(n_incl_y) + 1.0)
+        pore.isPeriodic = isPeriodicK
+        if isPeriodicK:
+            throat = (Ly - (2.0*n_incl_y*radius))/n_incl_y
+        else:
+            throat = (Ly - 2.0*n_incl_y*radius)/(n_incl_y + 1.0)
+
         pore.throat = throat
         pore.bounding_box = ([0.0, 0.0, 0.5], [Lx, Ly, 1.0])
         pore.xoffset = 0.
@@ -355,7 +360,9 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     i = 0
 
     isIn = np.where(xp < Lx)[0]
-
+    if tmax is None:
+        print('tmax not defined. tmax = 1.0')
+        tmax = 1.0
     while t <= tmax and isIn.size > 0:
 
         t = t + dt

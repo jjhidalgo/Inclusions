@@ -6,6 +6,6 @@ run_simulation(Lx=1., Ny=400,
                    target_incl_area=0.4, radius=None,
                    bcc='flow', isPeriodic=True, integrateInTime=False,
                    tmax=None, dt=None, Npart=int(1e4),
-                   plotPerm=True, plotFlow=False,
+                   plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
                    filename='test-rnd', doPost=True)
