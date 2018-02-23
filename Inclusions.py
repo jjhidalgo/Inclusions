@@ -37,8 +37,7 @@ def run_simulation(*, Lx=1., Ny=50,
                                          pack=pack, filename=filename,
                                          plotit=plotPerm, saveit=True)
 
-
-    ux, uy = flow(grid, kperm, bcc, isPeriodic=isPeriodic, plotHead=plotFlow)
+    ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=plotFlow)
 
     if dt is None:
         if integrateInTime:
@@ -64,7 +63,7 @@ def run_simulation(*, Lx=1., Ny=50,
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
 
     cbtc_time, cbtc = compute_cbtc(arrival_times,
-                                   saveit=True, showfig=False, savefig=False,
+                                   saveit=True, showfig=plotBTC, savefig=False,
                                    filename=filename)
 
 
@@ -163,8 +162,18 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         pore.ntries_max = int(1e5)
 
 
-    # Resizes domain to avoid boundary effects
+    # Centers circles and resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
+    xmin = np.min(pore.circles[:]['x'])
+    rr = pore.circles[0]['r']
+    #Leftmost circle's border moved to x=0.
+    pore.circles[:]['x'] = pore.circles[:]['x'] - xmin + rr
+    # Space behind rightmost circle.
+    xmax = np.max(pore.circles[:]['x'])
+    displacement = Lx - (xmax + rr)
+    #Circles centering
+    pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
+    #Adding of 4*r
     displacement = np.ceil(4.*radius)
     pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
 
@@ -174,7 +183,6 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         Ny = np.int(30/pore.circles[:]['r'].min())
 
     grid = setup_grid(Lx + displacement, Ny)
-
     kperm, incl_ind = perm_matrix(grid, pore.circles, Kfactor)
 
     # kperm[xx>-1] = 1.
@@ -197,9 +205,11 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     return kperm, incl_ind, grid
 
 ################
-def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
+def flow(grid, mu, bcc, isPeriodic=True, plotHead=False):
     ''' Solves the flow equation and returns the velocity
-        at the cell's faces.'''
+        at the cell's faces.
+        mu = 1./kperm
+    '''
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
@@ -207,7 +217,6 @@ def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
     dy = Ly/Ny
     dx2 = dx*dx
     dy2 = dy*dy
-    mu = 1./kperm
     Np = Nx*Ny
 
     # Transmisibility matrices.
@@ -260,11 +269,15 @@ def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
         Dp[0:Np:Ny] = Dp[0:Np:Ny] + Typ/dy2
         Dp[Ny-1:Np:Ny] = Dp[Ny-1:Np:Ny] + Typ/dy2
 
+    # TO DO. Check if this saves memory
+    import gc
+    mu = None
+    gc.collect()
+
     Am = sp.spdiags([-Tx2/dx2, -TypDw/dy2, -Ty22/dy2, Dp,
                      -Ty11/dy2, -TypUp/dy2, -Tx1/dx2],
                     [-Ny, -Ny + 1, -1, 0, 1, Ny - 1, Ny], Np, Np,
                     format='csr')
-
 
     #RHS - Boundary conditions
     u0 = 1.*dy
@@ -277,8 +290,21 @@ def flow(grid, kperm, bcc, isPeriodic=True, plotHead=False):
     else:
         S[0:Ny] = u0/dx #Neuman BC x=0;
 
-    head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
+    try:
+        head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
+    except:
+        print(grid['Ny'])
+        print(grid['Nx'])
+        #import sys
+        #sys.exit("spsolve out of memory.")
+        print("spsolve out of memory.")
+        head, info = lgsp.cg(Am, S)
+        print(info)
+        head = head.reshape(Ny, Nx, order='F')
 
+    Am = None
+    S = None
+    gc.collect()
     #Compute velocities
 
     ux = np.zeros([Ny, Nx+1])
@@ -325,8 +351,18 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
 
     t = 0.
     xp = np.zeros(Npart)
-    #yp = np.random.rand(Npart)##
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+    #qq
+    #r = 0.398942280
+    #bb = 2.*(2.*r*(0.1/1.1))
+    #yp = np.arange(Ly/2. - bb, Ly + bb + bb/Npart, 2.*bb/Npart)
+    #alpha0 = np.pi/2.#np.arcsin(2.3*bb)    #np.pi/2.
+    #alpha1  = 3.*np.pi/2.#np.arcsin(-2.3*bb)  #3.*np.pi/2.
+    #angle = alpha1 - alpha0
+    #alpha = np.arange(alpha0,  alpha1 + angle/Npart, angle/Npart)
+    #yp = 0.5 + r*np.sin(alpha)
+    #xp = 1.48 + r*np.cos(alpha)
+    #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
 
@@ -445,7 +481,14 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
-    #yp = np.random.rand(Npart)
+    #r = 0.398942280
+    #bb = 2.*(2.*r*(0.1/1.1))
+    #yp = np.arange(Ly/2. - bb, Ly + bb + bb/Npart, 2.*bb/Npart)
+    #alpha0 = np.arcsin(2.3*bb)    #np.pi/2.
+    #alpha1  = np.arcsin(-2.3*bb)  #3.*np.pi/2.
+    #angle = alpha1 - alpha0
+    #alpha = np.arange(alpha0,  alpha1 + angle/Npart, angle/Npart)
+    #yp = 0.5 + r*np.sin(alpha)
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
 
@@ -568,6 +611,7 @@ def plotXY(x, y, fig=None, ax=None, lin=None, allowClose=False):
         fig.canvas.draw()
 
     if allowClose:
+        ##ax.set_yscale("log", nonposy='clip')
         input("Dale enter y cierro...")
         plt.close()
         fig = None
@@ -756,12 +800,11 @@ def inclusions_histograms(incl_times, showfig=True, savefig=False,
     return True
 
 ################
-def plot_hist(data, title='', bins='auto', showfig=True, savefig=False,
-              savedata=False, figname='zz', figformat='pdf'):
+def plot_hist(data, title='', bins='auto', density=True, showfig=True,
+              savefig=False, savedata=False, figname='zz', figformat='pdf'):
     '''Plots the histogram of the data.'''
 
-    vals, edges = np.histogram(data, bins=bins, density=True)
-
+    vals, edges = np.histogram(data, bins=bins, density=density)
     if showfig:
         _, _, _ = plotXY((edges[:-1] + edges[1:])/2., vals,
                          allowClose= not savefig)
@@ -880,7 +923,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     dy = Ly/(Ny-1)
     Np = Nx*Ny
 
-    D1x, D2x, D1y, D2y = fd_mats(Nx, Ny, dx, dy)
+    D1x, D2x, D1y, D2y = fd_mats(Nx, Ny, dx, dy, isPeriodic=isPeriodic)
 
     Y = np.log(kperm).reshape(Np, order='F')
     #Kmat = (D1x.multiply((D1x*Y).reshape(Np, 1)) +
@@ -892,48 +935,50 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     RHS = np.zeros(Np)
     #BC
     #
-    if isPeriodic:
-        #TO DO
-        print('stream_function: periodic b. c. not implemented')
-    else:
-        #Top boundary
-        Amat[0:Np:Ny, :] = 0.0
-        idx = np.arange(0, Np, Ny)
-        Amat[idx, idx] = 1.0
-        RHS[0:Np:Ny] = Ly
-        #
-        #Bottom boundary
-        Amat[Ny-1:Np:Ny, :] = 0.0
-        idx = np.arange(Ny-1, Np, Ny)
-        Amat[idx, idx] = 1.0
-        RHS[Ny-1:Np:Ny] = 0.0
+    #Top boundary
+    Amat[0:Np:Ny, :] = 0.0
+    idx = np.arange(0, Np, Ny)
+    Amat[idx, idx] = 1.0
+    RHS[0:Np:Ny] = Ly
     #
+    #Bottom boundary
+    Amat[Ny-1:Np:Ny, :] = 0.0
+    idx = np.arange(Ny-1, Np, Ny)
+    Amat[idx, idx] = 1.0
+    RHS[Ny-1:Np:Ny] = 0.0
+    #
+    if isPeriodic:
+        RHS[0:Np:Ny] = RHS[0:Np:Ny] - Ly/2.0
+        RHS[Ny-1:Np:Ny] = RHS[Ny-1:Np:Ny] - Ly/2.0
+
     #Left boundary
     Amat[0:Ny, :] = 0.0
     idx = np.arange(0, Ny, 1)
     Amat[idx, idx] = 1.0
-    RHS[0:Ny] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
+    RHS[0:Ny] = np.linspace(0., Ly, Ny)[::-1]
+    if isPeriodic:
+        RHS[0:Ny] = np.linspace(0., Ly, Ny)[::-1] - Ly/2.0
     #
     #Right boundary
     Amat[Np-Ny:Np, :] = 0.0
     idx = np.arange(Np-Ny, Np, 1)
     Amat[idx, idx] = 1.0
-    RHS[Np-Ny:Np] = np.arange(0., Ly+dy, dy)[::-1] #(Ly:-dy:0)
+    RHS[Np-Ny:Np] = RHS[0:Ny]
 
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
 
     if plotPsi:
         fig, ax, cb = plot2D(grid, kperm, title='psi', allowClose=False)
         cb.remove()
-        x1 = np.arange(0.0, Lx+dx, dx)
-        y1 = np.arange(0.0, Ly+dy, dy)
+        x1 = np.arange(0.0, Lx+dx/2., dx)
+        y1 = np.arange(0.0, Ly+dy/2., dy)
         xx, yy = np.meshgrid(x1, y1)
-        ax.contour(xx, yy, psi, 21, linewidths=0.5, colors='y')
+        ax.contour(xx, yy, np.abs(psi), 31, linewidths=0.5, colors='y')
         input("Dale enter y cierro...")
         plt.close()
     return psi
 ################
-def fd_mats(Nx, Ny, dx, dy):
+def fd_mats(Nx, Ny, dx, dy, isPeriodic=False):
     '''Computes finite differeces matrices.'''
     Np = Nx*Ny
     dx2 = dx*dx
@@ -943,18 +988,28 @@ def fd_mats(Nx, Ny, dx, dy):
     Dp = np.zeros(Np)
     Dup = np.ones(Np)/(2.0*dy)
     Ddw = -np.ones(Np)/(2.0*dy)
+    DperUp = np.zeros(Np)
+    DperDw = np.zeros(Np)
     #
     #Top boundary
-    Dp[0:Np:Ny] = -1.0/dy #diagonal
     Ddw[Ny-1:Np:Ny] = 0.0 #diagonal inferior
-    Dup[1:Np:Ny] = 1.0/dy #diagonal superior
+    if isPeriodic:
+        DperUp[Ny-1:Np:Ny] = -1.0/(2.0*dy)
+    else:
+        Dp[0:Np:Ny] = -1.0/dy #diagonal
+        Dup[1:Np:Ny] = 1.0/dy #diagonal superior
     #
     #Bottom bounday
-    Dp[Ny-1:Np:Ny] = 1.0/dy #diagonal
-    Ddw[Ny-2:Np:Ny] = -1.0/dy #diagonal inferior
     Dup[Ny:Np:Ny] = 0.0
+    if isPeriodic:
+        DperDw[0:Np:Ny] = 1.0/(2.0*dy)
+    else:
+        Dp[Ny-1:Np:Ny] = 1.0/dy #diagonal
+        Ddw[Ny-2:Np:Ny] = -1.0/dy #diagonal inferior
     #
-    D1y = sp.spdiags([Ddw, Dp, Dup], [-1, 0, 1], Np, Np, format='csr')
+    D1y = sp.spdiags([DperDw, Ddw, Dp, Dup, DperUp],
+                     [-Ny+1, -1, 0, 1, Ny-1], Np, Np,
+                     format='csr')
     #
     #
     # First derivatives in X
@@ -976,24 +1031,38 @@ def fd_mats(Nx, Ny, dx, dy):
     Dp = -2.0*np.ones(Np)/dy2
     Ddw = np.ones(Np)/dy2
     Dup = np.ones(Np)/dy2
+    Dup2 = np.zeros(Np) #segunda diagonal superior
+    Ddw2 = np.zeros(Np) #segunda diagonal inferior
+    DperUp = np.zeros(Np)
+    DperDw = np.zeros(Np)
     #
     # Top boundary
-    Dp[0:Np:Ny] = 1.0/dy2 #diagonal
-    Ddw[Ny-1:Np:Ny] = 0. # diagonal inferior
-    Dup[1:Np:Ny] = -2.0/dy2 #diagonal superior
-    Dup2 = np.zeros(Np) #segunda diagonal superior
-    Dup2[2:Np:Ny] = 1.0/dy2
+    if isPeriodic:
+        DperUp[Ny-1:Np:Ny] = 1.0/(dy2)
+        Ddw[Ny-1:Np:Ny] = 0. # diagonal inferior
+    else:
+        Dp[0:Np:Ny] = 1.0/dy2 #diagonal
+        Ddw[Ny-1:Np:Ny] = 0. # diagonal inferior
+        Dup[1:Np:Ny] = -2.0/dy2 #diagonal superior
+        Dup2[2:Np:Ny] = 1.0/dy2
     #
     # Bottom boundary
-    Dp[Ny-1:Np:Ny] = 1.0/dy2 #diagonal
-    Ddw[Ny-2:Np:Ny] = -2.0/dy2 #diagonal inferior
-    Ddw2 = np.zeros(Np) #segunda diagonal inferior
-    Ddw2[Ny-3:Np:Ny] = 1.0/dy2
-    Dup[Ny:Np:Ny] = 0.0 #Diagonal superior
+    if isPeriodic:
+        DperDw[0:Np:Ny] = 1.0/(dy2)
+        Dup[Ny:Np:Ny] = 0.0 #Diagonal superior
+    else:
+        Dp[Ny-1:Np:Ny] = 1.0/dy2 #diagonal
+        Ddw[Ny-2:Np:Ny] = -2.0/dy2 #diagonal inferior
+        Ddw2[Ny-3:Np:Ny] = 1.0/dy2
+        Dup[Ny:Np:Ny] = 0.0 #Diagonal superior
 
     D2y = sp.spdiags([Ddw2, Ddw, Dp, Dup, Dup2],
                      [-2, -1, 0, 1, 2],
                      Np, Np, format='csr')
+    if isPeriodic:
+        D2y = D2y + sp.spdiags([DperDw, DperUp],
+                               [-Ny + 1, Ny - 1],
+                               Np, Np, format='csr')
 
     #Second derivative in X
     Dp = -2.0*np.ones(Np)/dx2
@@ -1020,7 +1089,7 @@ def fd_mats(Nx, Ny, dx, dy):
 ################
 def update_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
     """ Given the particles inside the domain (isIn), the indexes of
-        the cells where the poarticles are (indx, indy), the indexes
+        the cells where the particles are (indx, indy), the indexes
         of the cells inside incluisions (incl_ind), and the current time
         (per particle if integrating along streamlines) (time), updates
         the time the particle entered and/or exited each inclusion.
@@ -1060,12 +1129,18 @@ def total_time_in_incl(t_in_incl):
 
     return tot_t_in_incl
 ################
-def compute_cbtc(arrival_times, saveit=False,
+def compute_cbtc(arrival_times, bins=None, saveit=False,
                  showfig=False, savefig=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
-    cbtc_time = np.sort(arrival_times)
     Npart = arrival_times.shape[0]
-    cbtc = 1. - np.cumsum(np.ones(Npart))/Npart
+    if bins is None:
+        cbtc_time = np.sort(arrival_times)
+        cbtc = 1. - np.cumsum(np.ones(Npart))/Npart
+    else:
+        vals, edges = np.histogram(arrival_times, bins=bins, density=False)
+        cbtc_time = (edges[:-1] + edges[1:])/2.
+        cbtc = 1. - np.cumsum(vals)/Npart
+
     if saveit:
         fname = 'cbtc.dat'
         if filename is not None:
@@ -1296,7 +1371,7 @@ def inclusion_area(grid, circles, Kfactor):
     incl_area =  sum(kperm<1.)
     total_area = sum(kperm>0.)
 
-    return incl_area/total_area
+    return incl_area/total_area, kperm
 ################
 def flatten_list(l):
     '''Merge items in list with sublists.
@@ -1308,17 +1383,32 @@ def flatten_list(l):
 def average_number_of_inclusions(kperm):
     ''' Computes the average number of inclusions in the vertical and
         horizontal directions'''
-    
+
     h_aux = np.sum(np.abs(np.diff(kperm, axis=1))>0, axis=1)/2
     v_aux = np.sum(np.abs(np.diff(kperm, axis=0))>0, axis=0)/2
-    
+
     #mean in the whole domain
     h_avg = np.mean(h_aux)
     v_avg = np.mean(v_aux)
-    
+
     #mean removing zeros
     h_avg_nonzero = np.nanmean(np.where(h_aux!=0, h_aux, np.nan))
     v_avg_nonzero = np.nanmean(np.where(v_aux!=0, v_aux, np.nan))
 
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
+################
+def permeability_data(fname):
+
+    grid, circles, Kfactor = load_perm(fname)
+
+    print('Lx = '+ str(grid['Lx']))
+    print('radius = '+ str(circles[0]['r']))
+    print('inclusions = '+ str(circles.shape[0]))
+    incl_area, kperm = inclusion_area(grid, circles, Kfactor)
+    print('inclusion_area = ' + str(incl_area))
+
+    keff = equivalent_permeability(grid, kperm)
+    print('Keff = ' + str(keff))
+
+    return grid['Lx'], circles[0]['r'], circles.shape[0], incl_area, keff
 ################
