@@ -168,7 +168,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     rr = pore.circles[0]['r']
     #Leftmost circle's border moved to x=0.
     pore.circles[:]['x'] = pore.circles[:]['x'] - xmin + rr
-    # Space behind rightmost circle.
+    #Space behind rightmost circle.
     xmax = np.max(pore.circles[:]['x'])
     displacement = Lx - (xmax + rr)
     #Circles centering
@@ -352,17 +352,6 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     t = 0.
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
-    #qq
-    #r = 0.398942280
-    #bb = 2.*(2.*r*(0.1/1.1))
-    #yp = np.arange(Ly/2. - bb, Ly + bb + bb/Npart, 2.*bb/Npart)
-    #alpha0 = np.pi/2.#np.arcsin(2.3*bb)    #np.pi/2.
-    #alpha1  = 3.*np.pi/2.#np.arcsin(-2.3*bb)  #3.*np.pi/2.
-    #angle = alpha1 - alpha0
-    #alpha = np.arange(alpha0,  alpha1 + angle/Npart, angle/Npart)
-    #yp = 0.5 + r*np.sin(alpha)
-    #xp = 1.48 + r*np.cos(alpha)
-    #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
 
@@ -481,24 +470,8 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
-    #r = 0.398942280
-    #bb = 2.*(2.*r*(0.1/1.1))
-    #yp = np.arange(Ly/2. - bb, Ly + bb + bb/Npart, 2.*bb/Npart)
-    #alpha0 = np.arcsin(2.3*bb)    #np.pi/2.
-    #alpha1  = np.arcsin(-2.3*bb)  #3.*np.pi/2.
-    #angle = alpha1 - alpha0
-    #alpha = np.arange(alpha0,  alpha1 + angle/Npart, angle/Npart)
-    #yp = 0.5 + r*np.sin(alpha)
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
-
-    #qq
-    # ux = np.ones(ux.shape)
-    # uy = np.zeros(uy.shape)
-    # Npart = 10
-    # xp = np.arange(0,1,1/Npart)
-    # yp = np.random.rand(Npart)
-    #qq
 
     Ax = ((ux[:, 1:Nx + 1] - ux[:, 0:Nx])/dx).flatten(order='F')
     Ay = ((uy[1:Ny + 1, :] - uy[0:Ny, :])/dy).flatten(order='F')
@@ -592,7 +565,8 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
     return  arrival_times, t_in_incl
 
 ####
-def plotXY(x, y, fig=None, ax=None, lin=None, allowClose=False):
+def plotXY(x, y, fig=None, ax=None, lin=None, logx=False, logy=False,
+           allowClose=False):
     '''Function to do Y vs X plots. '''
 
     if fig is None or ax is None:
@@ -610,8 +584,13 @@ def plotXY(x, y, fig=None, ax=None, lin=None, allowClose=False):
         lin.set_ydata(y)
         fig.canvas.draw()
 
+    if logy:
+        ax.set_yscale("log", nonposy='mask')
+
+    if logx:
+        ax.set_xscale("log", nonposy='mask')
+
     if allowClose:
-        ##ax.set_yscale("log", nonposy='clip')
         input("Dale enter y cierro...")
         plt.close()
         fig = None
@@ -723,7 +702,7 @@ def load_data(filename):
 ################
 def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
-        and exited each inclusions, returns the time each particle spent
+        and exited each inclusion, returns the time each particle spent
         in each inclusion in a matrix format suitable to calculate
         histograms.
         It also returns all times in a single array.
@@ -750,6 +729,10 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
     trapped_part = np.unique(np.array(trapped_part))
     num_free_part  = Npart - trapped_part.shape[0]
 
+    trap_times =  np.concatenate(np.array(list(incl_times.values())))
+    # adds as many zeros as free particles
+    trap_times =  np.concatenate((trap_times, np.zeros(num_free_part)))
+
     if saveit:
 
         if filename is None:
@@ -771,13 +754,9 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
         else:
             fname = filename + '-trap-times.dat'
 
-        trap_times =  np.concatenate(np.array(list(incl_times.values())))
-        # adds as many zeros as free particles
-        trap_times =  np.concatenate((trap_times, np.zeros(num_free_part)))
-
         np.savetxt(fname, trap_times)
 
-        return incl_times, trap_times
+    return incl_times, trap_times
 
 ################
 def inclusions_histograms(incl_times, showfig=True, savefig=False,
@@ -1130,7 +1109,8 @@ def total_time_in_incl(t_in_incl):
     return tot_t_in_incl
 ################
 def compute_cbtc(arrival_times, bins=None, saveit=False,
-                 showfig=False, savefig=False, filename=None):
+                 logx=False, logy=False, showfig=False,
+                 savefig=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
     Npart = arrival_times.shape[0]
     if bins is None:
@@ -1148,7 +1128,7 @@ def compute_cbtc(arrival_times, bins=None, saveit=False,
 
         np.savetxt(fname, np.matrix([cbtc_time, cbtc]).transpose())
     if showfig:
-        _, _, _ = plotXY(cbtc_time, cbtc, allowClose=True)
+        _, _, _ = plotXY(cbtc_time, cbtc, logx=logx, logy=logy, allowClose=True)
 
         if savefig:
             save_fig(xlabel='time', ylabel='cbtc', title='',
@@ -1341,7 +1321,7 @@ def equivalent_permeability(grid, kperm, isPeriodic=False):
     """Compute the  equivalent permeability of the medium.
     """
     bcc='head'
-    ux, _ = flow(grid, kperm, bcc, isPeriodic=isPeriodic, plotHead=False)
+    ux, _ = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=False)
     dy = grid['Ly']/grid['Ny']
     gradH = 1./grid['Lx']
     Q = np.sum(ux[:,-1])*dy
@@ -1366,10 +1346,11 @@ def inclusion_area(grid, circles, Kfactor):
     radius = circles[0]['r']
     displacement = np.ceil(4.*radius)
     ndisp  = np.int(displacement/dx/2)
-    kperm = kperm[:,ndisp:-ndisp].flatten()
+    #kperm = kperm[:,ndisp:-ndisp]
+    kshape = kperm.shape
 
-    incl_area =  sum(kperm<1.)
-    total_area = sum(kperm>0.)
+    incl_area =  sum(kperm[:,ndisp:-ndisp].flatten()<1.)
+    total_area = sum(kperm[:,ndisp:-ndisp].flatten()>0.)
 
     return incl_area/total_area, kperm
 ################
