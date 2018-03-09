@@ -352,6 +352,13 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     t = 0.
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+    #qq
+    rad = 0.25231325
+    alpha = np.arange(np.pi/Npart/2.0, np.pi, np.pi/Npart)
+    alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
+    xp = 1.5 + rad*np.cos(alpha)
+    yp  = 0.5 +rad*np.sin(alpha)
+    #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
 
@@ -470,6 +477,12 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+    #qq
+    rad = 0.25231325
+    alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
+    xp = 1.5 + rad*np.cos(alpha)
+    yp  = 0.5 + rad*np.sin(alpha)
+    #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
 
@@ -598,7 +611,8 @@ def plotXY(x, y, fig=None, ax=None, lin=None, logx=False, logy=False,
         lin = None
     return fig, ax, lin
 ####
-def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
+def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
+           allowClose=False):
     '''Function to do 2 dimensional plots of cell centerd or face centered
        varibles.'''
 
@@ -637,7 +651,7 @@ def plot2D(grid, C, fig=None, ax=None, title=None, allowClose=False):
     plt.sca(ax)
     plt.ion()
 
-    mesh = ax.pcolormesh(xx, yy, C, cmap='coolwarm')
+    mesh = ax.pcolormesh(xx, yy, C, cmap=cmap)
 
     #plt.axis('equal')
     #plt.axis('tight')
@@ -843,7 +857,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               showfig=showfig, savefig=savefig,
               savedata=savedata, figname=figname)
 
-   # TO DO: Verify.
+   # TO DO: Verify. 
    # _, _ = incl_per_time(t_in_incl, plotit=showfig,
    #                          saveit=savedata, filename=fname)
 
@@ -852,12 +866,6 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
 
     incl_per_part = inclusion_per_particle(t_in_incl, Npart, saveit=savedata,
                                            filename=fname)
-
-    figname = fname + '-trap-events'
-    plot_hist(incl_per_part, title='', bins='auto',
-              showfig=showfig, savefig=savefig, savedata=savedata,
-              figname=figname)
-
 
     if dofullpostp:
     #particle histogram
@@ -945,14 +953,14 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     RHS[Np-Ny:Np] = RHS[0:Ny]
 
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
-
     if plotPsi:
-        fig, ax, cb = plot2D(grid, kperm, title='psi', allowClose=False)
+        fig, ax, cb = plot2D(grid, kperm, title='K', allowClose=False)
         cb.remove()
         x1 = np.arange(0.0, Lx+dx/2., dx)
         y1 = np.arange(0.0, Ly+dy/2., dy)
         xx, yy = np.meshgrid(x1, y1)
-        ax.contour(xx, yy, np.abs(psi), 31, linewidths=0.5, colors='y')
+        ax.contour(xx, yy, np.abs(psi), 51, linewidths=1.0, colors='y')
+        plt.show()
         input("Dale enter y cierro...")
         plt.close()
     return psi
@@ -1283,9 +1291,10 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
 
     return traptime, trapcbtc, freetime, freecbtc
 ################
-def inclusion_per_particle(t_in_incl, Npart, saveit=False, filename=None):
+def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
+                           savefig=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
-        and exited each inclusions, returns the number of inclusons visited
+        and exited each inclusions, returns the number of inclusions visited
         by each particle.
         Optionally, the data is saved as a text file.
     """
@@ -1299,6 +1308,20 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, filename=None):
             fname = filename + '-' + fname
 
         np.savetxt(fname, incl_per_part)
+        
+        fname = 'trap-events'
+        if filename is not None:
+            fname = filename + '-' + fname
+        
+    if saveit or showfig:
+        num_incl = len(t_in_incl)
+        bins = np.arange(0, num_incl + 1)
+        bins = np.arange(0, np.max(incl_per_part) + 1)
+        ipdb.set_trace()
+        plot_hist(incl_per_part, title='', bins=bins,
+                  showfig=showfig, savefig=savefig, savedata=saveit,
+                  figname=filename)
+
     return incl_per_part
 ################
 def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
