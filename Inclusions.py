@@ -1317,7 +1317,6 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
         num_incl = len(t_in_incl)
         bins = np.arange(0, num_incl + 1)
         bins = np.arange(0, np.max(incl_per_part) + 1)
-        ipdb.set_trace()
         plot_hist(incl_per_part, title='', bins=bins,
                   showfig=showfig, savefig=savefig, savedata=saveit,
                   figname=filename)
