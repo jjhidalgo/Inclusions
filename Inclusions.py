@@ -161,7 +161,6 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         pore.ngrains_max = int(1.1*n_incl)
         pore.ntries_max = int(1e5)
 
-
     # Centers circles and resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
     xmin = np.min(pore.circles[:]['x'])
@@ -353,11 +352,11 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
     #qq
-    rad = 0.25231325
-    alpha = np.arange(np.pi/Npart/2.0, np.pi, np.pi/Npart)
-    alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
-    xp = 1.5 + rad*np.cos(alpha)
-    yp  = 0.5 +rad*np.sin(alpha)
+    #rad = 0.25231325
+    #alpha = np.arange(np.pi/Npart/2.0, np.pi, np.pi/Npart)
+    #alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
+    #xp = 1.5 + rad*np.cos(alpha)
+    #yp  = 0.5 +rad*np.sin(alpha)
     #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
@@ -634,11 +633,11 @@ def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
     if cnx > Nx:      # x face centered
 
         x1 = np.arange(-dx/2., Lx + dx, dx)
-        y1 = np.arange(0., Ly + dy, dy)
+        y1 = np.arange(0., Ly + dy/2., dy)
 
-    elif cny < Ny: # y face centered
+    elif cny > Ny: # y face centered
 
-        x1 = np.arange(0., Lx + dx, dx)
+        x1 = np.arange(0., Lx + dx/2., dx)
         y1 = np.arange(-dy/2., Ly + dy, dy)
 
     else:              #cell centered
@@ -857,7 +856,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               showfig=showfig, savefig=savefig,
               savedata=savedata, figname=figname)
 
-   # TO DO: Verify. 
+   # TO DO: Verify.
    # _, _ = incl_per_time(t_in_incl, plotit=showfig,
    #                          saveit=savedata, filename=fname)
 
@@ -1308,11 +1307,11 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
             fname = filename + '-' + fname
 
         np.savetxt(fname, incl_per_part)
-        
+
         fname = 'trap-events'
         if filename is not None:
             fname = filename + '-' + fname
-        
+
     if saveit or showfig:
         num_incl = len(t_in_incl)
         bins = np.arange(0, num_incl + 1)
