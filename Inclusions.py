@@ -477,10 +477,10 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
     #qq
-    rad = 0.25231325
-    alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
-    xp = 1.5 + rad*np.cos(alpha)
-    yp  = 0.5 + rad*np.sin(alpha)
+    #rad = 0.25231325
+    #alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
+    #xp = 1.5 + rad*np.cos(alpha)
+    #yp  = 0.5 + rad*np.sin(alpha)
     #qq
     dx = np.float(Lx/Nx)
     dy = np.float(Ly/Ny)
