@@ -386,7 +386,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     for i in range(num_incl):
         t_in_incl.append({})
 
-    nwrite = 10# np.max([int((tmax/dt)/1000),10])
+    nwrite = 10 # np.max([int((tmax/dt)/1000),10])
     arrival_times = np.zeros(Npart)
     i = 0
 
@@ -1262,8 +1262,9 @@ def plot_perm_from_file(fname):
     kperm, _ = perm_matrix(grid, circles, Kfactor)
     plot2D(grid, kperm, title='K', allowClose=True)
 ################
-def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
-                         filename=None):
+def free_trapped_arrival(arrival_times, t_immobile, bins=None,
+                         saveit=False, logx=False, logy=False,
+                         showfig=False, savefig=False, filename=None):
     """Given the arrival time and the immobile time of all particles,
         returns the arrival times of particles that visited at least
         one inclusion (trapped) and of those that did not visit any
@@ -1281,11 +1282,15 @@ def free_trapped_arrival(arrival_times, t_immobile, saveit=False,
     arrivals_trapped = arrival_times[trapped]
     arrivals_free = arrival_times[~ trapped]
 
-    traptime, trapcbtc = compute_cbtc(arrivals_trapped,
-                                      saveit=saveit, filename=filename + 'trap')
+    traptime, trapcbtc = compute_cbtc(arrivals_trapped, bins=bins,
+                                      saveit=saveit, logx=logx, logy=logy,
+                                      showfig=showfig, savefig=savefig,
+                                      filename=filename + 'trap')
 
-    freetime, freecbtc = compute_cbtc(arrivals_free,
-                                      saveit=saveit, filename=filename + 'free')
+    freetime, freecbtc = compute_cbtc(arrivals_free, bins=bins,
+                                      saveit=saveit, logx=logx, logy=logy,
+                                      showfig=showfig, savefig=savefig,
+                                      filename=filename + 'free')
 
 
     return traptime, trapcbtc, freetime, freecbtc
@@ -1318,7 +1323,7 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
         bins = np.arange(0, np.max(incl_per_part) + 1)
         plot_hist(incl_per_part, title='', bins=bins,
                   showfig=showfig, savefig=savefig, savedata=saveit,
-                  figname=filename)
+                  figname=fname)
 
     return incl_per_part
 ################
