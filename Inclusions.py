@@ -1325,6 +1325,10 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
                   showfig=showfig, savefig=savefig, savedata=saveit,
                   figname=fname)
 
+    print("Trapping Events.")
+    print("Mean: " + str(np.mean(incl_per_part)))
+    print( "Variance: " + str(np.var(incl_per_part)))
+    
     return incl_per_part
 ################
 def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
