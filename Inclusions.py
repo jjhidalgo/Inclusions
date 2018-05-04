@@ -1423,3 +1423,49 @@ def permeability_data(fname):
 
     return grid['Lx'], circles[0]['r'], circles.shape[0], incl_area, keff
 ################
+def get_mesh(grid, centering='cell'):
+    """ Returns face centered, x cenered or y centered mesh.
+        centering = cell, x, y.
+    """
+
+    Lx, Ly, Nx, Ny = unpack_grid(grid)
+    dx = Lx/Nx
+    dy = Ly/Ny
+
+    if centering == 'x':     # x face centered
+
+        x = np.arange(0., Lx + dx, dx)
+        y = np.arange(0., Ly + dy/2., dy)
+
+    elif centering == 'y':      # y face centered
+
+        x = np.arange(0., Lx + dx/2., dx)
+        y = np.arange(0., Ly + dy, dy)
+
+    elif centering == 'cell':  #cell centered
+
+        x = np.arange(dx, Lx + dx/2., dx)
+        y = np.arange(dy, Ly + dy/2., dy)
+
+    xx, yy = np.meshgrid(x, y)
+
+    return xx, yy, x, y
+################
+def velocity_distribution(grid, kperm, ux=None, uy=None, bins='auto',
+                          showfig=False, savefig=False, savedata=False,
+                          fname='zz'):
+    
+    """Computes the velocity distribution in the inclusions.
+    """
+    if ux is None or uy is None:
+        ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False)
+    uxm = (ux[:, 0:-1] + ux[:, 1:])/2.
+    uym = (uy[0:-1, :] + uy[1:, :])/2.
+    vel = np.sqrt(uxm*uxm + uym*uym)
+    figname  = fname + '-vel'
+    
+    plot_hist(vel[kperm<1.0], title='', bins=bins, density=True,
+              showfig=showfig, savefig=savefig, savedata=savedata,
+              figname=figname, figformat='pdf')
+
+    return True
