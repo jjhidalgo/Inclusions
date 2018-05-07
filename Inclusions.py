@@ -1328,7 +1328,7 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
     print("Trapping Events.")
     print("Mean: " + str(np.mean(incl_per_part)))
     print( "Variance: " + str(np.var(incl_per_part)))
-    
+
     return incl_per_part
 ################
 def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
@@ -1454,17 +1454,31 @@ def get_mesh(grid, centering='cell'):
 def velocity_distribution(grid, kperm, ux=None, uy=None, bins='auto',
                           showfig=False, savefig=False, savedata=False,
                           fname='zz'):
-    
+
     """Computes the velocity distribution in the inclusions.
     """
     if ux is None or uy is None:
         ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False)
+
     uxm = (ux[:, 0:-1] + ux[:, 1:])/2.
     uym = (uy[0:-1, :] + uy[1:, :])/2.
     vel = np.sqrt(uxm*uxm + uym*uym)
-    figname  = fname + '-vel'
-    
+
+    figname  = fname + '-vel-incl'
+
     plot_hist(vel[kperm<1.0], title='', bins=bins, density=True,
+              showfig=showfig, savefig=savefig, savedata=savedata,
+              figname=figname, figformat='pdf')
+
+    figname  = fname + '-vel-mat'
+
+    plot_hist(vel[kperm>0.99], title='', bins=bins, density=True,
+              showfig=showfig, savefig=savefig, savedata=savedata,
+              figname=figname, figformat='pdf')
+
+    figname  = fname + '-vel-all'
+
+    plot_hist(vel, title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
