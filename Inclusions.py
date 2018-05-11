@@ -1451,12 +1451,17 @@ def get_mesh(grid, centering='cell'):
 
     return xx, yy, x, y
 ################
-def velocity_distribution(grid, kperm, ux=None, uy=None, bins='auto',
-                          showfig=False, savefig=False, savedata=False,
-                          fname='zz'):
+def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
+                          bins='auto', showfig=False, savefig=False,
+                          savedata=False, fname=''):
 
     """Computes the velocity distribution in the inclusions.
     """
+
+    xx, _, _, _ = get_mesh(grid)
+    xmax = np.max(xx[kperm<1.])
+    xmin = np.min(xx[kperm<1.])
+
     if ux is None or uy is None:
         ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False)
 
@@ -1476,10 +1481,52 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, bins='auto',
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
+
+    figname  = fname + '-vel-mat-no-buffer'
+    mask = [kperm > 0.99] and [xx > xmin] and [xx < xmax]
+    plot_hist(vel[mask], title='', bins=bins, density=True,
+              showfig=showfig, savefig=savefig, savedata=savedata,
+              figname=figname, figformat='pdf')
+
     figname  = fname + '-vel-all'
 
     plot_hist(vel, title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
+
+    # Statistics by inclusion
+    if incl_ind is not None:
+        num_incl = incl_ind.max().astype(int)
+
+        vmean = np.zeros(num_incl)
+
+        incl_ind = incl_ind.todense().astype(int)
+        for i in range(num_incl):
+            figname  = fname + '-vel-' + str(i)
+            plot_hist(vel[incl_ind==(i+1)], title='', bins=bins, density=True,
+                      showfig=showfig, savefig=savefig, savedata=savedata,
+                      figname=figname, figformat='pdf')
+
+            vmean[i] = np.mean(vel[incl_ind==i])
+
+        figname = fname + '-vel-mean'
+        plot_hist(vmean, title='', bins=bins, density=True,
+                  showfig=showfig, savefig=savefig, savedata=savedata,
+                  figname=figname, figformat='pdf')
+
+    return True
+################
+def velocity_distribution_from_file(fname, folder='.'):
+    ''' Loads data and computes the velocity distributions.
+    '''
+    permfile = folder + '/' + fname
+
+    grid, circles, Kfactor = load_perm(permfile)
+    radius = circles[0]['r']
+    kperm, incl_ind = perm_matrix(grid, circles, Kfactor)
+
+    _ =  velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
+                               bins='auto', showfig=False, savefig=False,
+                               savedata=True, fname=fname)
 
     return True
