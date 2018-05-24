@@ -1483,7 +1483,7 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
 
     figname  = fname + '-vel-mat-no-buffer'
-    mask = [kperm > 0.99] and [xx > xmin] and [xx < xmax]
+    mask = (kperm > 0.99) & (xx > xmin) & (xx < xmax)
     plot_hist(vel[mask], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
