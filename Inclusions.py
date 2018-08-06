@@ -670,6 +670,7 @@ def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
         plt.close()
         fig = None
         ax = None
+        cb = None
 
     return fig, ax, cb
 ################
@@ -758,7 +759,7 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
         import csv
         with open(fname, 'w') as ff:
             writer = csv.writer(ff, delimiter=' ')
-            # I whished I knew why this works...
+            # I whish I knew why this works...
             for values in zip_longest(*list(incl_times.values())):
                 writer.writerow(np.asarray(values))
 
@@ -953,16 +954,39 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
 
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
-        fig, ax, cb = plot2D(grid, kperm, title='K', allowClose=False)
-        cb.remove()
-        x1 = np.arange(0.0, Lx+dx/2., dx)
-        y1 = np.arange(0.0, Ly+dy/2., dy)
-        xx, yy = np.meshgrid(x1, y1)
-        ax.contour(xx, yy, np.abs(psi), 51, linewidths=1.0, colors='y')
-        plt.show()
-        input("Dale enter y cierro...")
-        plt.close()
+        plot_stream(psi, grid, kperm, circles)
+                    
     return psi
+################
+def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
+    ''' plot stream function on top of permeability.
+    '''
+
+    fig = plt.figure()
+    ax = fig.gca()
+    if kperm is not None:
+       fig, ax, cb = plot2D(grid, kperm, fig=fig, ax=ax, cmap=cmap)
+       cb.remove()
+
+    if circles is not None:
+        for c in circles:
+            circle1 = plt.Circle((c['x'],c['y']), c['r'], color='k',fill=False)
+            ax.add_artist(circle1)
+    
+    Lx, Ly, Nx, Ny = unpack_grid(grid)
+    dx = Lx/(Nx-1)
+    dy = Ly/(Ny-1)
+    
+    x1 = np.arange(0.0, Lx+dx/2., dx)
+    y1 = np.arange(0.0, Ly+dy/2., dy)
+    xx, yy = np.meshgrid(x1, y1)
+    ax.contour(xx, yy, np.abs(psi), N, linewidths=1.0, colors='k')
+    plt.axis('scaled')
+    plt.show()
+    input("Dale enter y cierro...")
+    plt.close()
+
+    return True
 ################
 def fd_mats(Nx, Ny, dx, dy, isPeriodic=False):
     '''Computes finite differeces matrices.'''
@@ -1255,12 +1279,61 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
 
     return times, occ_incl
 ################
-def plot_perm_from_file(fname):
-    '''Load permeability data from plk file and plots it.'''
+def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
+                        edgeColor='k', fill=False, axisColor='k',
+                        backgroundColor='w', showTicks=True,
+                        allowClose=True, showFig=True, saveFig=False):
+    '''Load permeability data from plk file and plots it.
+       The color options allow to generate a image that can be used to
+       compute the inclusion distribution properties. For example,
+       plot_perm_from_file('3rnd', faceColor='w', edgeColor='w',
+                           backgroundColor='k', showTicks=False)
+
+      shows the inclusions as white circles with black background.
+    '''
     #TO DO : check that file exists.
     grid, circles, Kfactor = load_perm(fname)
-    kperm, _ = perm_matrix(grid, circles, Kfactor)
-    plot2D(grid, kperm, title='K', allowClose=True)
+
+    if plotWithCircles:
+        fig = plt.figure()
+        ax = fig.gca()
+
+        for c in circles:
+            circle1 = plt.Circle((c['x'],c['y']), c['r'],
+                                 edgecolor=edgeColor,
+                                 facecolor=faceColor,
+                                 fill=fill)
+            ax.add_artist(circle1)
+
+        plt.axis('scaled')
+        plt.xlim(0,grid['Lx'])
+        plt.ylim(0,grid['Ly'])
+        ax.set_facecolor(backgroundColor)
+        ax.spines['left'].set_color(axisColor)
+        ax.spines['right'].set_color(axisColor)
+        ax.spines['top'].set_color(axisColor)
+        ax.spines['bottom'].set_color(axisColor)
+        plt.ion()
+        if not showTicks:
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        if showFig:
+            plt.show()
+
+        if saveFig:
+            import os.path as ospath
+            figname = ospath.split(fname)[1] + '-perm.png'
+            plt.savefig(figname)
+
+        if allowClose:
+            input("Dale enter y cierro...")
+            plt.close()
+
+    else:
+        kperm, _ = perm_matrix(grid, circles, Kfactor)
+        plot2D(grid, kperm, title='K', allowClose=True)
+
 ################
 def free_trapped_arrival(arrival_times, t_immobile, bins=None,
                          saveit=False, logx=False, logy=False,
@@ -1298,7 +1371,7 @@ def free_trapped_arrival(arrival_times, t_immobile, bins=None,
 def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
                            savefig=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
-        and exited each inclusions, returns the number of inclusions visited
+        and exited each inclusion, returns the number of inclusions visited
         by each particle.
         Optionally, the data is saved as a text file.
     """
