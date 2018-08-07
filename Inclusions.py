@@ -955,7 +955,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
         plot_stream(psi, grid, kperm, circles)
-                    
+
     return psi
 ################
 def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
@@ -972,11 +972,11 @@ def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
         for c in circles:
             circle1 = plt.Circle((c['x'],c['y']), c['r'], color='k',fill=False)
             ax.add_artist(circle1)
-    
+
     Lx, Ly, Nx, Ny = unpack_grid(grid)
     dx = Lx/(Nx-1)
     dy = Ly/(Ny-1)
-    
+
     x1 = np.arange(0.0, Lx+dx/2., dx)
     y1 = np.arange(0.0, Ly+dy/2., dy)
     xx, yy = np.meshgrid(x1, y1)
@@ -1308,11 +1308,14 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         plt.axis('scaled')
         plt.xlim(0,grid['Lx'])
         plt.ylim(0,grid['Ly'])
+
         ax.set_facecolor(backgroundColor)
-        ax.spines['left'].set_color(axisColor)
-        ax.spines['right'].set_color(axisColor)
-        ax.spines['top'].set_color(axisColor)
-        ax.spines['bottom'].set_color(axisColor)
+
+        for axis in ['top','bottom','left','right']:
+            ax.spines[axis].set_linewidth(0.1)
+            ax.spines[axis].set_color(axisColor)
+            ax.spines[axis].set_visible(False)
+
         plt.ion()
         if not showTicks:
             ax.set_xticks([])
@@ -1323,12 +1326,14 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
 
         if saveFig:
             import os.path as ospath
-            figname = ospath.split(fname)[1] + '-perm.png'
-            plt.savefig(figname)
+            figname = ospath.split(fname)[1] + '-perm.pdf'
+            plt.savefig(figname,format='pdf')
+
 
         if allowClose:
             input("Dale enter y cierro...")
-            plt.close()
+
+        plt.close()
 
     else:
         kperm, _ = perm_matrix(grid, circles, Kfactor)
