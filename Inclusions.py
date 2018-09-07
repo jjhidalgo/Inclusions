@@ -21,7 +21,7 @@ import ipdb
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
-                   target_incl_area=0.5,radius=None,
+                   target_incl_area=0.5, radius=None,
                    bcc='head', isPeriodic=True, integrateInTime=True,
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
@@ -75,9 +75,9 @@ def run_simulation(*, Lx=1., Ny=50,
     if doPost:
 
         postprocess(Npart, t_in_incl, arrival_times, fname=filename,
-                   savedata=True, savefig=False,
-                   showfig=False, figformat='pdf',
-                   bins='auto', dofullpostp=False)
+                    savedata=True, savefig=False,
+                    showfig=False, figformat='pdf',
+                    bins='auto', dofullpostp=False)
 
         print("End of postprocess.\n")
 
@@ -103,12 +103,13 @@ def setup_grid(Lx, Ny):
     return grid
 ################
 def unpack_grid(grid):
+    '''Retunrs the grid data in individual variables.'''
     return grid['Lx'][0], grid['Ly'][0], grid['Nx'][0], grid['Ny'][0]
 
 ################
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
-                 filename=None, plotit=False, saveit=True):
+                 filename=None, plotit=False, saveit=True, tol=1e-8):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -297,7 +298,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False):
         #import sys
         #sys.exit("spsolve out of memory.")
         print("spsolve out of memory.")
-        head, info = lgsp.cg(Am, S)
+        head, info = lgsp.cg(Am, S, tol=tol)
         print(info)
         head = head.reshape(Ny, Nx, order='F')
 
@@ -386,7 +387,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     for i in range(num_incl):
         t_in_incl.append({})
 
-    nwrite = 10 # np.max([int((tmax/dt)/1000),10])
+    nwrite = 50 # np.max([int((tmax/dt)/1000),10])
     arrival_times = np.zeros(Npart)
     i = 0
 
@@ -733,7 +734,7 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
     i = 0
     for incl in tot_t_in_incl:
         vals = list(incl.values())
-        if len(vals)>0:
+        if len(vals) > 0:
             incl_times[i] = np.concatenate(vals)
             trapped_part[i] = list(incl.keys())
             i = i + 1
@@ -741,11 +742,11 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
             incl_times[i] = 0
     trapped_part = flatten_list(list(trapped_part.values()))
     trapped_part = np.unique(np.array(trapped_part))
-    num_free_part  = Npart - trapped_part.shape[0]
+    num_free_part = Npart - trapped_part.shape[0]
 
-    trap_times =  np.concatenate(np.array(list(incl_times.values())))
+    trap_times = np.concatenate(np.array(list(incl_times.values())))
     # adds as many zeros as free particles
-    trap_times =  np.concatenate((trap_times, np.zeros(num_free_part)))
+    trap_times = np.concatenate((trap_times, np.zeros(num_free_part)))
 
     if saveit:
 
@@ -799,21 +800,21 @@ def plot_hist(data, title='', bins='auto', density=True, showfig=True,
 
     vals, edges = np.histogram(data, bins=bins, density=density)
     if showfig:
-        _, _, _ = plotXY((edges[:-1] + edges[1:])/2., vals,
-                         allowClose= not savefig)
+        plotXY((edges[:-1] + edges[1:])/2., vals, allowClose=not savefig)
+
         if savefig:
             save_fig(xlabel='time', ylabel='freq', title='title',
                      figname=figname, figformat=figformat)
 
     if savedata:
         filename = figname + '.dat'
-        np.savetxt(filename, np.matrix([edges[:-1],edges[1:], vals]).transpose())
+        np.savetxt(filename, np.matrix([edges[:-1], edges[1:], vals]).transpose())
 
     return True
 ################
 def postprocess_from_file(fname, savedata=True, savefig=False,
                           showfig=False, figformat='pdf',
-                          bins='auto',dofullpostp=False):
+                          bins='auto', dofullpostp=False):
     """Post process from plk file. Computes the histograms for
        particles and inclusions. Saves data and/or figures.
     """
@@ -833,12 +834,13 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
                 bins='auto', dofullpostp=False):
     """Post process simulation data.
     """
-    _, _ = compute_cbtc(arrival_times, saveit=savedata,
-                        showfig=showfig, savefig=savefig,
-                        filename=fname)
+    compute_cbtc(arrival_times, saveit=savedata,
+                 showfig=showfig, savefig=savefig,
+                 filename=fname)
 
     t_mobile, t_immobile = mobile_immobile_time(t_in_incl, arrival_times,
-                                          filename=fname, saveit=savedata)
+                                                filename=fname,
+                                                saveit=savedata)
     figname = fname + '-immob-hist'
     plot_hist(t_immobile, title='', bins='auto',
               showfig=showfig, savefig=savefig,
@@ -850,7 +852,8 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
               savedata=savedata, figname=figname)
 
     incl_times, trap_times = time_per_inclusion(t_in_incl, Npart,
-                                       saveit=savedata, filename=fname)
+                                                saveit=savedata,
+                                                filename=fname)
 
     figname = fname + '-trap-dist'
     plot_hist(trap_times, title='', bins='auto',
@@ -861,20 +864,19 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
    # _, _ = incl_per_time(t_in_incl, plotit=showfig,
    #                          saveit=savedata, filename=fname)
 
-    _, _, _, _ = free_trapped_arrival(arrival_times, t_immobile,
-                                         saveit=savedata, filename=fname)
+    free_trapped_arrival(arrival_times, t_immobile, saveit=savedata,
+                         filename=fname)
 
-    incl_per_part = inclusion_per_particle(t_in_incl, Npart, saveit=savedata,
-                                           filename=fname)
+    inclusion_per_particle(t_in_incl, Npart, saveit=savedata, filename=fname)
 
     if dofullpostp:
     #particle histogram
         plot_hist(trap_times, title=fname + ' particles', bins=bins,
-              showfig=showfig, savefig=savepartfig, savedata=savedata,
-              figname=fname + '-part-hist', figformat=figformat)
+                  showfig=showfig, savefig=savefig, savedata=savedata,
+                  figname=fname + '-part-hist', figformat=figformat)
 
 
-        inclusions_histograms(incl_times, showfig=showfig, savefig=saveinclfig,
+        inclusions_histograms(incl_times, showfig=showfig, savefig=savefig,
                               savedata=False, fname=fname,
                               figformat=figformat, bins=bins)
 
@@ -882,7 +884,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
 ################
 def postprocess_all(savedata=True, savefig=False,
                     showfig=False, figformat='pdf',
-                    bins='auto',dofullpostp=False):
+                    bins='auto', dofullpostp=False):
 
     """ Post process al the cases in a folder."""
 
@@ -894,7 +896,7 @@ def postprocess_all(savedata=True, savefig=False,
             fname = os.path.splitext(file)[0]
             print(fname + '...')
             postprocess_from_file(fname, savedata=savedata, savefig=savefig,
-                          showfig=showfig, figformat='pdf',
+                                  showfig=showfig, figformat='pdf',
                                   bins='auto', dofullpostp=dofullpostp)
     return True
 ################
@@ -954,7 +956,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
 
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
-        plot_stream(psi, grid, kperm, circles)
+        plot_stream(psi, grid, kperm=kperm, circles=True)
 
     return psi
 ################
@@ -965,12 +967,12 @@ def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
     fig = plt.figure()
     ax = fig.gca()
     if kperm is not None:
-       fig, ax, cb = plot2D(grid, kperm, fig=fig, ax=ax, cmap=cmap)
-       cb.remove()
+        fig, ax, cb = plot2D(grid, kperm, fig=fig, ax=ax, cmap=cmap)
+        cb.remove()
 
     if circles is not None:
         for c in circles:
-            circle1 = plt.Circle((c['x'],c['y']), c['r'], color='k',fill=False)
+            circle1 = plt.Circle((c['x'], c['y']), c['r'], color='k', fill=False)
             ax.add_artist(circle1)
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
@@ -1159,7 +1161,7 @@ def compute_cbtc(arrival_times, bins=None, saveit=False,
 
         np.savetxt(fname, np.matrix([cbtc_time, cbtc]).transpose())
     if showfig:
-        _, _, _ = plotXY(cbtc_time, cbtc, logx=logx, logy=logy, allowClose=True)
+        plotXY(cbtc_time, cbtc, logx=logx, logy=logy, allowClose=True)
 
         if savefig:
             save_fig(xlabel='time', ylabel='cbtc', title='',
@@ -1239,8 +1241,8 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     """
 
     # total time of particles in inclusions
-    num_incl = len(t_in_incl)
-    incl_indx = np.arange(0, num_incl, 1)
+    #num_incl = len(t_in_incl)
+    #incl_indx = np.arange(0, num_incl, 1)
 
     # We build an array with all residence times
     # (entrance and exit of each particle in each visited inclusion).
@@ -1299,19 +1301,19 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         ax = fig.gca()
 
         for c in circles:
-            circle1 = plt.Circle((c['x'],c['y']), c['r'],
+            circle1 = plt.Circle((c['x'], c['y']), c['r'],
                                  edgecolor=edgeColor,
                                  facecolor=faceColor,
                                  fill=fill)
             ax.add_artist(circle1)
 
         plt.axis('scaled')
-        plt.xlim(0,grid['Lx'])
-        plt.ylim(0,grid['Ly'])
+        plt.xlim(0, grid['Lx'])
+        plt.ylim(0, grid['Ly'])
 
         ax.set_facecolor(backgroundColor)
 
-        for axis in ['top','bottom','left','right']:
+        for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(0.1)
             ax.spines[axis].set_color(axisColor)
             ax.spines[axis].set_visible(False)
@@ -1327,7 +1329,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         if saveFig:
             import os.path as ospath
             figname = ospath.split(fname)[1] + '-perm.pdf'
-            plt.savefig(figname,format='pdf')
+            plt.savefig(figname, format='pdf')
 
 
         if allowClose:
@@ -1405,11 +1407,11 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
 
     print("Trapping Events.")
     print("Mean: " + str(np.mean(incl_per_part)))
-    print( "Variance: " + str(np.var(incl_per_part)))
+    print("Variance: " + str(np.var(incl_per_part)))
 
     return incl_per_part
 ################
-def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
+def save_fig(xlabel='', ylabel='', title='', figname='', figformat='pdf'):
     '''Saves current figure.'''
 
     plt.xlabel(xlabel)
@@ -1428,11 +1430,11 @@ def save_fig(xlabel='', ylabel='', title='',figname='',figformat='pdf'):
 def equivalent_permeability(grid, kperm, isPeriodic=False):
     """Compute the  equivalent permeability of the medium.
     """
-    bcc='head'
+    bcc = 'head'
     ux, _ = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=False)
     dy = grid['Ly']/grid['Ny']
     gradH = 1./grid['Lx']
-    Q = np.sum(ux[:,-1])*dy
+    Q = np.sum(ux[:, -1])*dy
 
     return Q/(grid['Ly']*gradH)
 ################
@@ -1453,12 +1455,12 @@ def inclusion_area(grid, circles, Kfactor):
     # We do not take into account the displacement
     radius = circles[0]['r']
     displacement = np.ceil(4.*radius)
-    ndisp  = np.int(displacement/dx/2)
+    ndisp = np.int(displacement/dx/2)
     #kperm = kperm[:,ndisp:-ndisp]
-    kshape = kperm.shape
+    #kshape = kperm.shape
 
-    incl_area =  sum(kperm[:,ndisp:-ndisp].flatten()<1.)
-    total_area = sum(kperm[:,ndisp:-ndisp].flatten()>0.)
+    incl_area = sum(kperm[:, ndisp:-ndisp].flatten() < 1.)
+    total_area = sum(kperm[:, ndisp:-ndisp].flatten() > 0.)
 
     return incl_area/total_area, kperm
 ################
@@ -1473,16 +1475,16 @@ def average_number_of_inclusions(kperm):
     ''' Computes the average number of inclusions in the vertical and
         horizontal directions'''
 
-    h_aux = np.sum(np.abs(np.diff(kperm, axis=1))>0, axis=1)/2
-    v_aux = np.sum(np.abs(np.diff(kperm, axis=0))>0, axis=0)/2
+    h_aux = np.sum(np.abs(np.diff(kperm, axis=1)) > 0, axis=1)/2
+    v_aux = np.sum(np.abs(np.diff(kperm, axis=0)) > 0, axis=0)/2
 
     #mean in the whole domain
     h_avg = np.mean(h_aux)
     v_avg = np.mean(v_aux)
 
     #mean removing zeros
-    h_avg_nonzero = np.nanmean(np.where(h_aux!=0, h_aux, np.nan))
-    v_avg_nonzero = np.nanmean(np.where(v_aux!=0, v_aux, np.nan))
+    h_avg_nonzero = np.nanmean(np.where(h_aux != 0, h_aux, np.nan))
+    v_avg_nonzero = np.nanmean(np.where(v_aux != 0, v_aux, np.nan))
 
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
@@ -1537,8 +1539,8 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
     """
 
     xx, _, _, _ = get_mesh(grid)
-    xmax = np.max(xx[kperm<1.])
-    xmin = np.min(xx[kperm<1.])
+    xmax = np.max(xx[kperm < 1.])
+    xmin = np.min(xx[kperm < 1.])
 
     if ux is None or uy is None:
         ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False)
@@ -1547,26 +1549,26 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
     uym = (uy[0:-1, :] + uy[1:, :])/2.
     vel = np.sqrt(uxm*uxm + uym*uym)
 
-    figname  = fname + '-vel-incl'
+    figname = fname + '-vel-incl'
 
-    plot_hist(vel[kperm<1.0], title='', bins=bins, density=True,
+    plot_hist(vel[kperm < 1.0], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
-    figname  = fname + '-vel-mat'
+    figname = fname + '-vel-mat'
 
-    plot_hist(vel[kperm>0.99], title='', bins=bins, density=True,
+    plot_hist(vel[kperm > 0.99], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
 
-    figname  = fname + '-vel-mat-no-buffer'
+    figname = fname + '-vel-mat-no-buffer'
     mask = (kperm > 0.99) & (xx > xmin) & (xx < xmax)
     plot_hist(vel[mask], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
-    figname  = fname + '-vel-all'
+    figname = fname + '-vel-all'
 
     plot_hist(vel, title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
@@ -1580,12 +1582,12 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
         incl_ind = incl_ind.todense().astype(int)
         for i in range(num_incl):
-            figname  = fname + '-vel-' + str(i)
-            plot_hist(vel[incl_ind==(i+1)], title='', bins=bins, density=True,
+            figname = fname + '-vel-' + str(i)
+            plot_hist(vel[incl_ind == (i+1)], title='', bins=bins, density=True,
                       showfig=showfig, savefig=savefig, savedata=savedata,
                       figname=figname, figformat='pdf')
 
-            vmean[i] = np.mean(vel[incl_ind==i])
+            vmean[i] = np.mean(vel[incl_ind == i])
 
         figname = fname + '-vel-mean'
         plot_hist(vmean, title='', bins=bins, density=True,
@@ -1600,11 +1602,11 @@ def velocity_distribution_from_file(fname, folder='.'):
     permfile = folder + '/' + fname
 
     grid, circles, Kfactor = load_perm(permfile)
-    radius = circles[0]['r']
+    #radius = circles[0]['r']
     kperm, incl_ind = perm_matrix(grid, circles, Kfactor)
 
-    _ =  velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
-                               bins='auto', showfig=False, savefig=False,
-                               savedata=True, fname=fname)
+    velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
+                          bins='auto', showfig=False, savefig=False,
+                          savedata=True, fname=fname)
 
     return True
