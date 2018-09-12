@@ -109,7 +109,7 @@ def unpack_grid(grid):
 ################
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
-                 filename=None, plotit=False, saveit=True, tol=1e-8):
+                 filename=None, plotit=False, saveit=True):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -205,7 +205,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     return kperm, incl_ind, grid
 
 ################
-def flow(grid, mu, bcc, isPeriodic=True, plotHead=False):
+def flow(grid, mu, bcc, isPeriodic=True, plotHead=False, tol=1e-8):
     ''' Solves the flow equation and returns the velocity
         at the cell's faces.
         mu = 1./kperm
