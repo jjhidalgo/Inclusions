@@ -292,14 +292,21 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False, tol=1e-8):
 
     try:
         head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
+
     except:
         print(grid['Ny'])
         print(grid['Nx'])
         #import sys
         #sys.exit("spsolve out of memory.")
         print("spsolve out of memory.")
-        head, info = lgsp.cg(Am, S, tol=tol)
+
+        #head, info = lgsp.cg(Am, S,tol=1e-10)
         print(info)
+        #print('voy a cg3')
+        import pyamg
+        ml = pyamg.ruge_stuben_solver(Am)
+        head = ml.solve(S, maxiter=2000, tol=1e-19)
+        print(np.linalg.norm(S-Am*head3))
         head = head.reshape(Ny, Nx, order='F')
 
     Am = None
