@@ -26,7 +26,8 @@ def run_simulation(*, Lx=1., Ny=50,
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
-                   filename=None, doPost=True):
+                   filename=None, doPost=True,
+                   directSolver=True, tol=1e-10, maxiter=2000):
     """ Runs a simulation."""
 
     grid = setup_grid(Lx, Ny)
@@ -37,7 +38,10 @@ def run_simulation(*, Lx=1., Ny=50,
                                          pack=pack, filename=filename,
                                          plotit=plotPerm, saveit=True)
 
-    ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=plotFlow)
+    ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
+                  plotHead=plotFlow,
+                  directSolver=directSolver,
+                  tol=tol, maxiter=maxiter)
 
     if dt is None:
         if integrateInTime:
@@ -205,7 +209,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     return kperm, incl_ind, grid
 
 ################
-def flow(grid, mu, bcc, isPeriodic=True, plotHead=False, tol=1e-8):
+def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
+         directSolver=True, tol=1e-10, maxiter=2000):
     ''' Solves the flow equation and returns the velocity
         at the cell's faces.
         mu = 1./kperm
@@ -290,22 +295,28 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False, tol=1e-8):
     else:
         S[0:Ny] = u0/dx #Neuman BC x=0;
 
-    try:
-        head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
+    solved = False
 
-    except:
-        print(grid['Ny'])
-        print(grid['Nx'])
-        #import sys
-        #sys.exit("spsolve out of memory.")
-        print("spsolve out of memory.")
+    if directSolver:    
+        try:
+            head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
+            solved = True
+
+        except:
+            print(grid['Ny'])
+            print(grid['Nx'])
+            solved = False
+            #import sys
+            #sys.exit("spsolve out of memory.")
+            print("spsolve out of memory.")
 
         #head, info = lgsp.cg(Am, S,tol=1e-10)
-        print(info)
+        #print(info)
         #print('voy a cg3')
+    if not solved or not directSolver:
         import pyamg
         ml = pyamg.ruge_stuben_solver(Am)
-        head = ml.solve(S, maxiter=2000, tol=1e-19)
+        head = ml.solve(S, maxiter=maxiter, tol=tol)
         print(np.linalg.norm(S-Am*head3))
         head = head.reshape(Ny, Nx, order='F')
 

@@ -8,5 +8,5 @@ run_simulation(Lx=1., Ny=400,
                    tmax=9e4, dt=None, Npart=int(1e4),
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=True,
-                   filename='test-rnd', doPost=True,
-                   directSolver=True)
+                   filename='test-rnd-iter', doPost=True,
+                   directSolver=False, tol=1e-10, maxiter=2000)
