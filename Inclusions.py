@@ -1565,6 +1565,12 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
     uxm = (ux[:, 0:-1] + ux[:, 1:])/2.
     uym = (uy[0:-1, :] + uy[1:, :])/2.
+
+    print('max ux: ' +  str(ux.max()))
+    print('min ux: ' +  str(ux.min()))
+    print('max uy: ' +  str(uy.max()))
+    print('min uy: ' +  str(uy.min()))
+
     vel = np.sqrt(uxm*uxm + uym*uym)
 
     figname = fname + '-vel-incl'
