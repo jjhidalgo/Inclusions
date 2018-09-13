@@ -346,6 +346,9 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
         uy[Ny, :] = uy[0, :]
 
 
+    if ux.min() < 0.:
+        print('Negative ux found!')
+
     if plotHead:
         plot2D(grid, head, title='head', allowClose=True)
         plot2D(grid, ux/dy, title='ux', allowClose=True)
