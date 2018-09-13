@@ -317,7 +317,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
         import pyamg
         ml = pyamg.ruge_stuben_solver(Am)
         head = ml.solve(S, maxiter=maxiter, tol=tol)
-        print(np.linalg.norm(S-Am*head3))
+        print(np.linalg.norm(S-Am*head))
         head = head.reshape(Ny, Nx, order='F')
 
     Am = None
