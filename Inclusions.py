@@ -27,7 +27,8 @@ def run_simulation(*, Lx=1., Ny=50,
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
                    filename=None, doPost=True,
-                   directSolver=True, tol=1e-10, maxiter=2000):
+                   directSolver=True, tol=1e-10, maxiter=2000,
+                   overlapTol=None):
     """ Runs a simulation."""
 
     grid = setup_grid(Lx, Ny)
@@ -36,7 +37,8 @@ def run_simulation(*, Lx=1., Ny=50,
                                          target_incl_area=target_incl_area,
                                          radius=radius, isPeriodicK=isPeriodic,
                                          pack=pack, filename=filename,
-                                         plotit=plotPerm, saveit=True)
+                                         plotit=plotPerm, saveit=True,
+                                         overlapTol=overlapTol)
 
     ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
                   plotHead=plotFlow,
@@ -113,7 +115,7 @@ def unpack_grid(grid):
 ################
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
-                 filename=None, plotit=False, saveit=True):
+                 filename=None, plotit=False, saveit=True, overlapTol=None):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -139,22 +141,22 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         total_area = Lx*Ly
         radius = np.sqrt((target_incl_area*total_area)/(np.pi*n_incl))
 
+    #Pore throat is computed according to regular arrangements.
+    if isPeriodicK:
+        throat = (Ly - (2.0*n_incl_y*radius))/n_incl_y
+    else:
+        throat = (Ly - 2.0*n_incl_y*radius)/(n_incl_y + 1.0)
+
+
     if pack == 'sqr' or pack == 'tri':
+
         pore = rp.RegPore2D(nx=n_incl_x, ny=n_incl_y,
                             radius=radius, packing=pack)
         pore.isPeriodic = isPeriodicK
-        if isPeriodicK:
-            throat = (Ly - (2.0*n_incl_y*radius))/n_incl_y
-        else:
-            throat = (Ly - 2.0*n_incl_y*radius)/(n_incl_y + 1.0)
 
-        pore.throat = throat
         pore.bounding_box = ([0.0, 0.0, 0.5], [Lx, Ly, 1.0])
         pore.xoffset = 0.
-
-
-        #delta = Lx - n_incl_x*(throat + 2.*radius)
-        #displacement = (delta - throat)/2.
+        pore.throat = throat
 
     elif pack == 'rnd':
 
@@ -165,6 +167,11 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
 
         pore.ngrains_max = int(1.1*n_incl)
         pore.ntries_max = int(1e5)
+
+        if overlapTol is None:
+            pore.tolerance = 1.5*throat
+        else:
+            pore.tolerance = overlapTol
 
     # Centers circles and resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
@@ -227,11 +234,9 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
     # Transmisibility matrices.
 
     Tx = np.zeros((Ny, Nx + 1))
-    #Tx[:, 1:Nx] = (2.*dy)/(mu[:, 0:Nx-1] + mu[:, 1:Nx+1])
-    Tx[:, 1:Nx] = (2.*dy)/(mu[:, 0:Nx-1] + mu[:, 1:Nx]) #new
+    Tx[:, 1:Nx] = (2.*dy)/(mu[:, 0:Nx-1] + mu[:, 1:Nx])
     Ty = np.zeros([Ny + 1, Nx])
-    #Ty[1:Ny, :] = (2.*dx)/(mu[0:Ny-1, :] + mu[1:Ny+1, :])
-    Ty[1:Ny, :] = (2.*dx)/(mu[0:Ny-1, :] + mu[1:Ny, :]) #new
+    Ty[1:Ny, :] = (2.*dx)/(mu[0:Ny-1, :] + mu[1:Ny, :])
 
     Tx1 = Tx[:, 0:Nx].reshape(Np, order='F')
     Tx2 = Tx[:, 1:Nx+1].reshape(Np, order='F')
@@ -242,8 +247,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
     Ty11 = Ty1
     Ty22 = Ty2
 
-    TxDirich = np.zeros(Ny)
-    TxDirich = (2.*dy)*(1./mu[:, Nx-1])
+    TxDirichR = (2.*dy)*(1./mu[:, Nx-1])
 
 
     if bcc == 'head':
@@ -255,11 +259,11 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
     #Dirichlet b.c. on the right
     Dp[Np-Ny:Np] = Ty1[Np-Ny:Np]/dy2 + Tx1[Np-Ny:Np]/dx2 + \
-                   Ty2[Np-Ny:Np]/dx2 + TxDirich/dx2
+                   Ty2[Np-Ny:Np]/dy2 + TxDirichR/dx2
 
     if bcc == 'head':
         Dp[0:Ny] = Ty1[0:Ny]/dy2 + Tx2[0:Ny]/dx2 + \
-                   Ty2[0:Ny]/dx2 + TxDirichL/dx2
+                   Ty2[0:Ny]/dy2 + TxDirichL/dx2
 
     #Periodic boundary conditions
     TypUp = np.zeros(Np)
@@ -289,7 +293,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
     hL = 1.
     hR = 0.
     S = np.zeros(Np)
-    S[Np-Ny:Np+1] = TxDirich*(hR/dx/dx) # Dirichlet X=1;
+    S[Np-Ny:Np+1] = TxDirichR*(hR/dx/dx) # Dirichlet X=1;
     if bcc == 'head':
         S[0:Ny] = TxDirichL*(hL/dx/dx) # Dirichlet X=0;
     else:
@@ -297,7 +301,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
     solved = False
 
-    if directSolver:    
+    if directSolver:
         try:
             head = lgsp.spsolve(Am, S).reshape(Ny, Nx, order='F')
             solved = True
@@ -305,24 +309,33 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
         except:
             print(grid['Ny'])
             print(grid['Nx'])
-            solved = False
-            #import sys
-            #sys.exit("spsolve out of memory.")
             print("spsolve out of memory.")
+            solved = False
+            
+
+
+    if not solved or not directSolver:
 
         #head, info = lgsp.cg(Am, S,tol=1e-10)
-        #print(info)
-        #print('voy a cg3')
-    if not solved or not directSolver:
+
+        #black box solver
         import pyamg
-        ml = pyamg.ruge_stuben_solver(Am)
-        head = ml.solve(S, maxiter=maxiter, tol=tol)
+        head = pyamg.solve(Am,S, maxiter=maxiter, tol=tol, verb=True)
+        
         print(np.linalg.norm(S-Am*head))
+        
         head = head.reshape(Ny, Nx, order='F')
+
+        #ml = pyamg.ruge_stuben_solver(Am)
+        #head = ml.solve(S, maxiter=maxiter, tol=tol)
+        #print(np.linalg.norm(S-Am*head1))
+        #head = head.reshape(Ny, Nx, order='F')
+        #ipdb.set_trace()
 
     Am = None
     S = None
     gc.collect()
+
     #Compute velocities
 
     ux = np.zeros([Ny, Nx+1])
@@ -333,21 +346,19 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
     else:
         ux[:, 0] = u0
 
-    #ux[:, 1:Nx] = -Tx[:, 1:Nx]*(head[:, 1:Nx+1] - head[:, 0:Nx-1])/dx
     ux[:, 1:Nx] = -Tx[:, 1:Nx]*(head[:, 1:Nx] - head[:, 0:Nx-1])/dx
-    ux[:, Nx] = -TxDirich*(hR - head[:, Nx-1])/dx
+    ux[:, Nx] = -TxDirichR*(hR - head[:, Nx-1])/dx
 
-    #uy[1:Ny, :] = -Ty[1:Ny, :]*(head[1:Ny+1, :] - head[0:Ny-1, :])/dy
     uy[1:Ny, :] = -Ty[1:Ny, :]*(head[1:Ny, :] - head[0:Ny-1, :])/dy
 
-    #periodic
+
     if isPeriodic:
         uy[0, :] = Typ*(head[0, :] - head[Ny - 1, :])/dy
         uy[Ny, :] = uy[0, :]
 
 
     if ux.min() < 0.:
-        print('Negative ux found!')
+        print('Negative ux found in ' + str(np.sum(ux<0.)) + ' cell(s)!')
 
     if plotHead:
         plot2D(grid, head, title='head', allowClose=True)
@@ -977,7 +988,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
 
     psi = lgsp.spsolve(Amat.tocsr(), RHS).reshape(Ny, Nx, order='F')
     if plotPsi:
-        plot_stream(psi, grid, kperm=kperm, circles=True)
+        plot_stream(psi, grid, kperm=kperm, circles=None)
 
     return psi
 ################
