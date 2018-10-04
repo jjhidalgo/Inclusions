@@ -26,7 +26,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
-                   filename=None, doPost=True,
+                   filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
                    overlapTol=None):
     """ Runs a simulation."""
@@ -77,6 +77,11 @@ def run_simulation(*, Lx=1., Ny=50,
         pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
 
     print("End of simulation.\n")
+
+    if doVelPost:
+        velocity_distribution(grid, kperm, ux=ux, uy=uy, incl_ind=incl_ind,
+                          bins='auto', showfig=False, savefig=False,
+                              savedata=True, fname=filename)
 
     if doPost:
 
@@ -212,7 +217,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         with open(fname, 'wb') as ff:
             pickle.dump([grid, pore.circles, Kfactor],
                         ff, pickle.HIGHEST_PROTOCOL)
-
+        #pore.write_mesh(fname='g', meshtype='stl')
     return kperm, incl_ind, grid
 
 ################
@@ -311,7 +316,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
             print(grid['Nx'])
             print("spsolve out of memory.")
             solved = False
-            
+
 
 
     if not solved or not directSolver:
@@ -321,9 +326,9 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
         #black box solver
         import pyamg
         head = pyamg.solve(Am,S, maxiter=maxiter, tol=tol, verb=True)
-        
+
         print(np.linalg.norm(S-Am*head))
-        
+
         head = head.reshape(Ny, Nx, order='F')
 
         #ml = pyamg.ruge_stuben_solver(Am)
@@ -359,7 +364,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
     if ux.min() < 0.:
         print('Negative ux found in ' + str(np.sum(ux<0.)) + ' cell(s)!')
-
+        #ux[ux>0.] = 0.
     if plotHead:
         plot2D(grid, head, title='head', allowClose=True)
         plot2D(grid, ux/dy, title='ux', allowClose=True)
@@ -866,7 +871,7 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
                 bins='auto', dofullpostp=False):
     """Post process simulation data.
     """
-    compute_cbtc(arrival_times, saveit=savedata,
+    compute_cbtc(arrival_times, bins='auto', saveit=savedata,
                  showfig=showfig, savefig=savefig,
                  filename=fname)
 
@@ -1187,7 +1192,7 @@ def compute_cbtc(arrival_times, bins=None, saveit=False,
         cbtc = 1. - np.cumsum(vals)/Npart
 
     if saveit:
-        fname = 'cbtc.dat'
+        fname = 'cbtc' + (bins is None)*'-h' + '.dat'
         if filename is not None:
             fname = filename + '-' + fname
 
