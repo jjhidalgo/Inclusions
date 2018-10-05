@@ -38,7 +38,8 @@ def run_simulation(*, Lx=1., Ny=50,
                                          radius=radius, isPeriodicK=isPeriodic,
                                          pack=pack, filename=filename,
                                          plotit=plotPerm, saveit=True,
-                                         overlapTol=overlapTol)
+                                         overlapTol=overlapTol,
+                                         calcKinfo=True, calcKeff=False)
 
     ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
                   plotHead=plotFlow,
@@ -120,7 +121,8 @@ def unpack_grid(grid):
 ################
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
-                 filename=None, plotit=False, saveit=True, overlapTol=None):
+                 filename=None, plotit=False, saveit=True, overlapTol=None,
+                 calcKinfo=True, calcKeff=False):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -218,6 +220,11 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
             pickle.dump([grid, pore.circles, Kfactor],
                         ff, pickle.HIGHEST_PROTOCOL)
         #pore.write_mesh(fname='g', meshtype='stl')
+
+    if calcKinfo or calcKeff:
+        permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
+                          calcKeff=calcKeff)
+
     return kperm, incl_ind, grid
 
 ################
@@ -1525,20 +1532,29 @@ def average_number_of_inclusions(kperm):
 
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
-def permeability_data(fname):
+def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
+                      calcKeff=False):
 
-    grid, circles, Kfactor = load_perm(fname)
+    if fname is not None:
+        grid, circles, Kfactor = load_perm(fname)
 
-    print('Lx = '+ str(grid['Lx']))
-    print('radius = '+ str(circles[0]['r']))
-    print('inclusions = '+ str(circles.shape[0]))
-    incl_area, kperm = inclusion_area(grid, circles, Kfactor)
-    print('inclusion_area = ' + str(incl_area))
+    if grid is not None or circles is not None or Kfactor is not None:
+        print('Permeability data.')
+        print('============ ====')
+        print('Lx = '+ str(grid['Lx']))
+        print('radius = '+ str(circles[0]['r']))
+        print('inclusions = '+ str(circles.shape[0]))
+        incl_area, kperm = inclusion_area(grid, circles, Kfactor)
+        print('inclusion_area = ' + str(incl_area))
 
-    keff = equivalent_permeability(grid, kperm)
-    print('Keff = ' + str(keff))
+        if calcKeff:
+            keff = equivalent_permeability(grid, kperm)
+            print('Keff = ' + str(keff))
+        else:
+            keff = None
+            print('Equivalent permeability not computed.')
 
-    return grid['Lx'], circles[0]['r'], circles.shape[0], incl_area, keff
+        return grid['Lx'], circles[0]['r'], circles.shape[0], incl_area, keff
 ################
 def get_mesh(grid, centering='cell'):
     """ Returns face centered, x cenered or y centered mesh.
