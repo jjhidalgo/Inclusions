@@ -946,9 +946,12 @@ def postprocess_all(savedata=True, savefig=False,
 ################
 def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     '''Compute the stream function.
-    The stream function is prescribed at the boundaries so that
-    It is equivalent to prescribed flow on the left and right
-    boundaries and no flow on top and bottom boundaries.'''
+    isPeriodic = False:
+      The stream function is prescribed at the boundaries so that
+      it is equivalent to prescribed flow on the left and right
+      boundaries and no flow on top and bottom boundaries.
+    isPeriodic = True:
+     TO DO'''
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
@@ -1638,6 +1641,8 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
         num_incl = incl_ind.max().astype(int)
 
         vmean = np.zeros(num_incl)
+        uxmean = np.zeros(num_incl)
+        uymean = np.zeros(num_incl)
 
         incl_ind = incl_ind.todense().astype(int)
         for i in range(num_incl):
@@ -1647,11 +1652,17 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
                       figname=figname, figformat='pdf')
 
             vmean[i] = np.mean(vel[incl_ind == i])
+            uxmean[i] = np.mean(uxm[incl_ind == i])
+            uymean[i] = np.mean(uym[incl_ind == i])
 
         figname = fname + '-vel-mean'
         plot_hist(vmean, title='', bins=bins, density=True,
                   showfig=showfig, savefig=savefig, savedata=savedata,
                   figname=figname, figformat='pdf')
+
+        if savedata:
+         filename = fname + '-vel-incl-mean-xy.dat'
+         np.savetxt(filename, np.matrix([uxmean, uymean,vmean]).transpose())
 
     return True
 ################
