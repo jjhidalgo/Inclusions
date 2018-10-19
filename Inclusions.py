@@ -1640,29 +1640,36 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
     if incl_ind is not None:
         num_incl = incl_ind.max().astype(int)
 
-        vmean = np.zeros(num_incl)
-        uxmean = np.zeros(num_incl)
-        uymean = np.zeros(num_incl)
+        #mean(ux), var(ux), mean(uy), var(uy), mean(v), var(v)
+        stats = np.zeros((num_incl, 6))
+
 
         incl_ind = incl_ind.todense().astype(int)
-        for i in range(num_incl):
-            figname = fname + '-vel-' + str(i)
-            plot_hist(vel[incl_ind == (i+1)], title='', bins=bins, density=True,
-                      showfig=showfig, savefig=savefig, savedata=savedata,
-                      figname=figname, figformat='pdf')
 
-            vmean[i] = np.mean(vel[incl_ind == i])
-            uxmean[i] = np.mean(uxm[incl_ind == i])
-            uymean[i] = np.mean(uym[incl_ind == i])
+        for i in range(num_incl):
+
+            figname = fname + '-vel-' + str(i + 1)
+            plot_hist(vel[incl_ind == (i + 1)], title='', bins=bins,
+                      density=True, showfig=showfig, savefig=savefig,
+                      savedata=savedata, figname=figname, figformat='pdf')
+
+            stats[i, 0] = np.mean(uxm[incl_ind == (i + 1)])
+            stats[i, 1] = np.var(uxm[incl_ind == (i + 1)])
+            stats[i, 2] = np.mean(uym[incl_ind == (i + 1)])
+            stats[i, 3] = np.var(uym[incl_ind == (i + 1)])
+            stats[i, 4] = np.mean(vel[incl_ind == (i + 1)])
+            stats[i, 5] = np.var(vel[incl_ind == (i + 1)])
+
 
         figname = fname + '-vel-mean'
-        plot_hist(vmean, title='', bins=bins, density=True,
+        plot_hist(stats[:, 4], title='', bins=bins, density=True,
                   showfig=showfig, savefig=savefig, savedata=savedata,
                   figname=figname, figformat='pdf')
 
         if savedata:
-         filename = fname + '-vel-incl-mean-xy.dat'
-         np.savetxt(filename, np.matrix([uxmean, uymean,vmean]).transpose())
+            header = 'mean-ux var-ux mean-uy var-uy mean-v var-v'
+            filename = fname + '-vel-incl-stats.dat'
+            np.savetxt(filename, stats, header=header)
 
     return True
 ################
