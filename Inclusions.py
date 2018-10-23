@@ -1202,7 +1202,7 @@ def compute_cbtc(arrival_times, bins=None, saveit=False,
         cbtc = 1. - np.cumsum(vals)/Npart
 
     if saveit:
-        fname = 'cbtc' + (bins is None)*'-h' + '.dat'
+        fname = 'cbtc' + (bins is not None)*'-h' + '.dat'
         if filename is not None:
             fname = filename + '-' + fname
 
@@ -1560,7 +1560,7 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
         return grid['Lx'], circles[0]['r'], circles.shape[0], incl_area, keff
 ################
 def get_mesh(grid, centering='cell'):
-    """ Returns face centered, x cenered or y centered mesh.
+    """ Returns face centered, x centered or y centered mesh.
         centering = cell, x, y.
     """
 
