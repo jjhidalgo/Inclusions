@@ -18,6 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
 import ipdb
+verbose = False
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -332,9 +333,10 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
         #black box solver
         import pyamg
-        head = pyamg.solve(Am,S, maxiter=maxiter, tol=tol, verb=True)
+        head = pyamg.solve(Am,S, maxiter=maxiter, tol=tol, verb=verbose)
 
-        print(np.linalg.norm(S-Am*head))
+        if verbose:
+            print(np.linalg.norm(S-Am*head))
 
         head = head.reshape(Ny, Nx, order='F')
 
@@ -1474,11 +1476,14 @@ def save_fig(xlabel='', ylabel='', title='', figname='', figformat='pdf'):
     input("Dale enter y cierro...")
     plt.close()
 ################
-def equivalent_permeability(grid, kperm, isPeriodic=False):
+def equivalent_permeability(grid, kperm, isPeriodic=False,
+                            directSolver=False, tol=1e-10, maxiter=2000):
     """Compute the  equivalent permeability of the medium.
     """
     bcc = 'head'
-    ux, _ = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=False)
+    ux, _ = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic, plotHead=False,
+                 directSolver=directSolver, tol=tol, maxiter=maxiter)
+
     dy = grid['Ly']/grid['Ny']
     gradH = 1./grid['Lx']
     Q = np.sum(ux[:, -1])*dy
@@ -1494,22 +1499,22 @@ def equivalent_permeability_from_file(fname):
 
     return equivalent_permeability(grid, kperm)
 ################
-def inclusion_area(grid, circles, Kfactor):
+def inclusion_area(grid, circles,  kperm=None):
     '''Computes inclusions area.'''
 
-    kperm, _ = perm_matrix(grid, circles, Kfactor)
+    if kperm is None:
+        kperm, _ = perm_matrix(grid, circles, 0.1)
+
     dx = grid['Lx']/grid['Nx']
     # We do not take into account the displacement
     radius = circles[0]['r']
     displacement = np.ceil(4.*radius)
     ndisp = np.int(displacement/dx/2)
-    #kperm = kperm[:,ndisp:-ndisp]
-    #kshape = kperm.shape
 
     incl_area = sum(kperm[:, ndisp:-ndisp].flatten() < 1.)
     total_area = sum(kperm[:, ndisp:-ndisp].flatten() > 0.)
 
-    return incl_area/total_area, kperm
+    return incl_area/total_area
 ################
 def flatten_list(l):
     '''Merge items in list with sublists.
@@ -1536,22 +1541,32 @@ def average_number_of_inclusions(kperm):
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
 def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
-                      calcKeff=False):
+                      calcKeff=False, directSolver=False,
+                      tol=1e-10, maxiter=2000):
 
     if fname is not None:
         grid, circles, Kfactor = load_perm(fname)
 
     if grid is not None or circles is not None or Kfactor is not None:
+        kperm, _ = perm_matrix(grid, circles, Kfactor)
+
         print('Permeability data.')
         print('============ ====')
         print('Lx = '+ str(grid['Lx']))
         print('radius = '+ str(circles[0]['r']))
         print('inclusions = '+ str(circles.shape[0]))
-        incl_area, kperm = inclusion_area(grid, circles, Kfactor)
+        incl_area = inclusion_area(grid, circles, kperm=kperm)
         print('inclusion_area = ' + str(incl_area))
 
+        h_avg, v_avg, h_avg_nonzero, v_avg_nonzero = average_number_of_inclusions(kperm)
+        print('Average number of inclusions:')
+        print('Horizontal = ' + str(h_avg) + ' (' + str(h_avg_nonzero) + ')')
+        print('Vertical = ' + str(v_avg) + ' (' + str(v_avg_nonzero) + ')')
+
         if calcKeff:
-            keff = equivalent_permeability(grid, kperm)
+            keff = equivalent_permeability(grid, kperm,
+                                           directSolver=directSolver,
+                                           tol=tol, maxiter=maxiter)
             print('Keff = ' + str(keff))
         else:
             keff = None
