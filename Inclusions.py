@@ -1391,7 +1391,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         plot2D(grid, kperm, title='K', allowClose=True)
 
 ################
-def free_trapped_arrival(arrival_times, t_immobile, bins=None,
+def free_trapped_arrival(arrival_times, t_immobile, bins='auto',
                          saveit=False, logx=False, logy=False,
                          showfig=False, savefig=False, filename=None):
     """Given the arrival time and the immobile time of all particles,
