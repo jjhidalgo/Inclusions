@@ -761,7 +761,8 @@ def load_data(filename):
             return  Npart, t_in_incl, arrival_times
 
 ################
-def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
+def time_per_inclusion(t_in_incl, Npart, bins='auto', saveit=False,
+                       savefig=False, showfig=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
         and exited each inclusion, returns the time each particle spent
         in each inclusion in a matrix format suitable to calculate
@@ -816,6 +817,19 @@ def time_per_inclusion(t_in_incl, Npart, saveit=False, filename=None):
             fname = filename + '-trap-times.dat'
 
         np.savetxt(fname, trap_times)
+
+        if filename is None:
+            figname = 'trap-dist'
+        else:
+            figname = filename + '-trap-dist'
+        plot_hist(trap_times, title='', bins=bins,
+                  showfig=showfig, savefig=savefig,
+                  savedata=saveit, figname=figname)
+
+        figname = figname + '-no-zero'
+        plot_hist(trap_times[trap_times>0.], title='', bins=bins,
+                 showfig=showfig, savefig=savefig,
+                 savedata=saveit, figname=figname)
 
     return incl_times, trap_times
 
@@ -900,11 +914,6 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
     incl_times, trap_times = time_per_inclusion(t_in_incl, Npart,
                                                 saveit=savedata,
                                                 filename=fname)
-
-    figname = fname + '-trap-dist'
-    plot_hist(trap_times, title='', bins='auto',
-              showfig=showfig, savefig=savefig,
-              savedata=savedata, figname=figname)
 
    # TO DO: Verify.
    # _, _ = incl_per_time(t_in_incl, plotit=showfig,
@@ -1453,6 +1462,10 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
         plot_hist(incl_per_part, title='', bins=bins,
                   showfig=showfig, savefig=savefig, savedata=saveit,
                   figname=fname)
+
+        plot_hist(incl_per_part[incl_per_part>0], title='', bins=bins,
+                  showfig=showfig, savefig=savefig, savedata=saveit,
+                  figname=fname + '-no-zero')
 
     print("Trapping Events.")
     print("Mean: " + str(np.mean(incl_per_part)))
