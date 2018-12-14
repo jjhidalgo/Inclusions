@@ -23,7 +23,8 @@ verbose = False
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
                    target_incl_area=0.5, radius=None,
-                   bcc='head', isPeriodic=True, integrateInTime=True,
+                   bcc='head', isPeriodic=True, integrateInTime=False,
+                   transportMethod='pollock',
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
@@ -52,20 +53,24 @@ def run_simulation(*, Lx=1., Ny=50,
             tx = grid['Lx']/grid['Nx']/ux.max()
             ty = grid['Ly']/grid['Ny']/uy.max()
             dt = np.min([tx, ty, 1e-3])
+
         else:
             dt = 0.1*Kfactor*grid['Lx']/grid['Nx']
 
-
-    if integrateInTime:
+    if transportMethod == 'time':
         arrival_times, t_in_incl = transport(grid, incl_ind,
                                              Npart, ux, uy,
                                              tmax, dt, isPeriodic=isPeriodic,
                                              plotit=plotTpt, CC=kperm)
-    else:
+    elif transportMethod == 'streamlines':
         arrival_times, t_in_incl = transport_ds(grid, incl_ind,
                                                 Npart, ux, uy,
                                                 dt, isPeriodic=isPeriodic)
-
+    elif transportMethod == 'pollock':
+        arrival_times, t_in_incl = transport_pollock(grid, incl_ind,
+                                                     Npart, ux, uy,
+                                                     isPeriodic=isPeriodic,
+                                                     plotit=plotTpt, CC=kperm)
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
@@ -204,10 +209,6 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     grid = setup_grid(Lx + displacement, Ny)
     kperm, incl_ind = perm_matrix(grid, pore.circles, Kfactor)
 
-    # kperm[xx>-1] = 1.
-    # kperm[yy>0.5] = 0.1
-    # kperm[xx<0.25] = 1.
-    # kperm[xx>0.75] = 1.
     if plotit:
         plot2D(grid, kperm, title='kperm', allowClose=True)
 
@@ -396,6 +397,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
         figt, axt, cbt = plot2D(grid, CC)
 
     t = 0.
+
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
     #qq
@@ -492,6 +494,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
             yp[yp > Ly] = 2.*Ly - yp[yp > Ly]
 
         isOut = isIn[np.where(xp[isIn] >= Lx)]
+
         arrival_times[isOut] = t # Correction TO DO - (xp[isOut] - Lx)/uxp
 
         isIn = np.where(xp < Lx)[0]
@@ -523,6 +526,7 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
 
     xp = np.zeros(Npart)
     yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+
     #qq
     #rad = 0.25231325
     #alpha = np.arange(np.pi/2. + np.pi/Npart/2.0, 3.*np.pi/2., np.pi/Npart)
@@ -615,7 +619,6 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
         t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
                                         indx, indy, arrival_times)
         isIn = np.where(xp < Lx)[0]
-
 
 
     print("Particles inside: %e" %(np.sum(isIn)))
@@ -1204,6 +1207,7 @@ def compute_cbtc(arrival_times, bins=None, saveit=False,
                  savefig=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
     Npart = arrival_times.shape[0]
+
     if bins is None:
         cbtc_time = np.sort(arrival_times)
         cbtc = 1. - np.cumsum(np.ones(Npart))/Npart
@@ -1715,3 +1719,261 @@ def velocity_distribution_from_file(fname, folder='.'):
                           savedata=True, fname=fname)
 
     return True
+################
+def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = False, CC=None):
+    '''...'''
+
+    # Geometry
+    Lx, Ly, Nx, Ny = unpack_grid(grid)
+
+    dx = np.float(Lx/Nx)
+    dy = np.float(Ly/Ny)
+
+    # Interpolant
+    Ax = ((ux[:, 1:Nx + 1] - ux[:, 0:Nx])/dx).flatten(order='F')
+    Ay = ((uy[1:Ny + 1, :] - uy[0:Ny, :])/dy).flatten(order='F')
+
+    #Faces velocities.
+    ux1 = ux[:, 0:Nx].flatten(order='F')
+    ux2 = ux[:, 1:Nx + 1].flatten(order='F')
+
+    uy1 = uy[0:Ny, :].flatten(order='F')
+    uy2 = uy[1:Ny + 1, :].flatten(order='F')
+
+    #faces' coordinates
+    x1 = np.arange(0., Lx + dx, dx)
+    y1 = np.arange(0., Ly + dy, dy)
+
+    # Case for Pollock's method.
+    case_x = pollock_case(ux1, ux2)
+    case_y = pollock_case(uy1, uy2)
+
+
+    arrival_times = np.zeros(Npart)
+
+    #number of inclusions
+    num_incl = incl_ind.max().astype(int)
+
+
+    # Time of each particle in each inclusion
+    # It contains nincl dictionaries.
+    # Each dictionary inclusion contain temporarily the
+    # times at which the particles enters and leaves the inclusion.
+    # At the end of the simulation only the time spent is stored.
+    # Example:
+    #
+    #   t_in_incl[1] --> times for particles that visited inclusion 1.
+    #   t_in_incl[1] = {1: [0.1, 3.4], 5: [1.2, 7.9]}
+    #
+    #   This means particle 1 entered at time 0.1 and left at time 3.4
+    #   and particle 3 entered at 1.2 and left at 7.9
+    #
+    #   At the end of the simulation we will have
+    #
+    #   t_in_incl[1] = {1: 3.3, 5: 6.7}
+    #
+    t_in_incl = []
+
+    for i in range(num_incl):
+        t_in_incl.append({})
+
+    #initial position of particles
+    xp = np.zeros(Npart)
+    yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+
+    isIn = np.where(xp < Lx)[0]
+
+    # initial cells indexes.
+    indx = (xp[isIn]/dx).astype(int)
+    indy = (yp[isIn]/dy).astype(int)
+
+    i = 0
+
+    if plotit and  CC is not None:
+        figt, axt, cbt = plot2D(grid, CC)
+        lint = None
+        figt, axt, lint = plotXY(xp[isIn], yp[isIn], figt, axt, lint)
+        axt.set_aspect('equal')
+        axt.set_xlim([0., Lx])
+        axt.set_ylim([0., Ly])
+        axt.set_xticks(np.arange(0, Lx, dx))
+        axt.set_yticks(np.arange(0, Ly, dy))
+        #plt.grid()
+        plt.title(i)
+
+    while  isIn.size > 0:
+
+        i = i + 1
+
+        #Ids of cells where particles are.
+        ic = indy[isIn] + indx[isIn]*Ny
+
+        t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
+                                        indx[isIn], indy[isIn], arrival_times)
+        #particles velocity
+        uxp = (ux1[ic] + Ax[ic]*(xp[isIn] - x1[indx[isIn]]))
+        uyp = (uy1[ic] + Ay[ic]*(yp[isIn] - y1[indy[isIn]]))
+
+        #potential travel times and exit faces
+        tx = travel_time(case_x[ic], xp[isIn], uxp,
+                         ux1[ic], ux2[ic], Ax[ic], dx)
+
+        face_x = exit_face(case_x[ic], uxp, is_y=False)
+
+        ty = travel_time(case_y[ic], yp[isIn], uyp,
+                         uy1[ic], uy2[ic], Ay[ic], dy)
+
+        face_y = exit_face(case_y[ic], uyp, is_y=True)
+
+        # actual travel time is the minimum.
+        time = np.array([tx, ty]).min(0)
+
+        #actual exit face is the corresponding to the minimum travel time.
+        mm = np.array([tx, ty]).argmin(0)
+
+        face = np.array([face_x, face_y])[mm, np.arange(mm.shape[0])]
+
+        # Calculates exit point.
+        xp[isIn], yp[isIn] = exit_point(case_x, case_y, ux1, uy1,
+                                        xp[isIn], yp[isIn],
+                                        uxp, uyp, Ax, Ay,
+                                        time, face, dx, dy, ic,
+                                        x1, y1, indx[isIn], indy[isIn])
+
+        if i%(Nx/1) == 0:
+            print("Last particle at: %e" %(np.min(xp)))
+            if plotit:
+                figt, axt, lint = plotXY(xp[isIn], yp[isIn], figt, axt, lint)
+                axt.set_aspect('equal')
+                axt.set_xlim([0., Lx])
+                axt.set_ylim([0., Ly])
+                axt.set_xticks(np.arange(0, Lx, dx))
+                axt.set_yticks(np.arange(0, Ly, dy))
+                plt.title(i)
+
+        #arrival times for cbtc.
+        arrival_times[isIn] = arrival_times[isIn] + time
+
+        t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
+                                        indx[isIn], indy[isIn], arrival_times)
+
+
+        # Determine new cell.
+        # if exits through face
+        #   1 --> indx - 1
+        #   2 --> indx + 1
+        #  -1 --> indy - 1
+        #  -2 --> indy + 1
+
+        indx[isIn] = indx[isIn] + ((face > 0)*(2*face - 3)).astype(int)
+        indy[isIn] = indy[isIn] + ((face < 0)*(-2*face - 3)).astype(int)
+
+
+        #boundary conditions
+        if isPeriodic:
+            yp[indy > Ny - 1] = 0.
+            yp[indy < 0] = Ly
+            indy[indy > Ny - 1] = 0
+            indy[indy < 0] = Ny - 1
+
+        else:
+            yp[indy > Ny - 1]  = Ly
+            indy[indy > Ny - 1] = Ny - 1
+
+            yp[indy > Ny - 1] = 0.
+            indy[indy < 0] = 0
+
+        #update number of particles still inside the domain.
+        isIn = np.where((Lx - xp) > dx/2.)[0]
+
+    return  arrival_times, t_in_incl
+
+#############
+def pollock_case(u1, u2):
+    ''' Determines to which case in Pollock's (1988) method the velocity
+        configuration belongs.
+    '''
+
+    case = np.zeros(u1.shape)
+
+    case[(u1 >= 0) & (u2 >= 0)] = 1
+    case[(u1 <= 0) & (u2 <= 0)] = 2
+    case[(u1 >= 0) & (u2 >= 0) & (np.abs(u1 - u2) < 1e-12)] = 3
+    case[(u1 <= 0) & (u2 <= 0) & (np.abs(u1 - u2) < 1e-12)] = 4
+    case[(u1 > 0) & (u2 < 0)] = 5
+    case[(u1 < 0) & (u2 > 0)] = 6
+
+    return case
+#############
+def travel_time(case, p, up, u1, u2, A, dp):
+    ''' Determines the travel time based on the Pollock case.'''
+
+    #np.seterr(all='ignore')
+
+    time = 1e19*np.ones(case.shape)
+
+    time = np.where((case == 1) & (u2 !=0.), (1./A)*np.log(u2/up), time)
+
+    time = np.where((case == 2) & (u1 !=0.), (1./A)*np.log(u1/up), time)
+
+    time = np.where(case == 3, dp/u1, time)
+
+    time = np.where(case == 4, dp/u2, time)
+
+    time = np.where(case == 5, 1e19, time)
+
+    time = np.where((case == 6) & (up > 0), (1./A)*np.log(u2/up), time)
+
+    time = np.where((case == 6) & (up < 0), (1./A)*np.log(u1/up), time)
+
+    time[time<0] = 1e19
+
+    return time
+#############
+def exit_face(case, up, is_y = False):
+    ''' Determines the exit face based on the Pollock case.'''
+
+    face = np.zeros(case.shape)
+
+    face = np.where(case == 1, 2, face)
+
+    face = np.where(case == 2, 1, face)
+
+    face = np.where(case == 3, 2, face)
+
+    face = np.where(case == 4, 1, face)
+
+    face = np.where(case == 5, 0, face)
+
+    face = np.where((case == 6) & (up > 0), 2, face)
+
+    face = np.where((case == 6) & (up < 0), 1, face)
+
+
+    return face*(1 - 2*is_y) #y faces have negative indexes
+################
+def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
+               time, face, dx, dy, ic, x1, y1, indx, indy):
+
+
+    xpnew = np.where((case_x[ic] == 3) | (case_x[ic] == 4),
+                  xp + uxp*time,
+                  x1[indx] + (1./Ax[ic])*(uxp*np.exp(Ax[ic]*time) - ux1[ic])
+    )
+
+    ypnew = np.where((case_y[ic] == 3) | (case_y[ic] == 4),
+                  yp + uyp*time,
+                  y1[indy] + (1./Ay[ic])*(uyp*np.exp(Ay[ic]*time) - uy1[ic])
+                  )
+
+    xp[face == 1] = x1[indx - 1][face == 1]
+    xp[face == 2] = x1[indx + 1][face == 2]
+    xp[(face != 1) & (face != 2)] = xpnew[(face != 1) & (face != 2)]
+
+    yp[face == -1] = y1[indy][face == -1]
+    yp[face == -2] = y1[indy + 1][face == -2]
+
+    yp[(face != -1) & (face != -2) ] = ypnew[(face != -1) & (face != -2)]
+
+    return xp, yp
+##################
