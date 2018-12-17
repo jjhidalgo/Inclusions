@@ -1840,7 +1840,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
                                         time, face, dx, dy, ic,
                                         x1, y1, indx[isIn], indy[isIn])
 
-        if i%(Nx/1) == 0:
+        if i%(100) == 0:
             print("Last particle at: %e" %(np.min(xp)))
             if plotit:
                 figt, axt, lint = plotXY(xp[isIn], yp[isIn], figt, axt, lint)
