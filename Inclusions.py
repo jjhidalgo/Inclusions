@@ -178,13 +178,13 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                             target_porosity=1.-target_incl_area,
                             packing='rnd')
 
-        pore.ngrains_max = int(1.1*n_incl)
+        pore.ngrains_max = int(5*n_incl)
         pore.ntries_max = int(1e5)
 
         if overlapTol is None:
             pore.tolerance = 1.5*throat
         else:
-            pore.tolerance = overlapTol
+            pore.tolerance = overlapTol*throat
 
     # Centers circles and resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
