@@ -787,13 +787,14 @@ def time_per_inclusion(t_in_incl, Npart, bins='auto', saveit=False,
         if len(vals) > 0:
             incl_times[i] = np.concatenate(vals)
             trapped_part[i] = list(incl.keys())
-            i = i + 1
         else:
-            incl_times[i] = 0
+
+            incl_times[i] = np.zeros(1) # so that it is an array.
+        i = i + 1
+
     trapped_part = flatten_list(list(trapped_part.values()))
     trapped_part = np.unique(np.array(trapped_part))
     num_free_part = Npart - trapped_part.shape[0]
-
     trap_times = np.concatenate(np.array(list(incl_times.values())))
     # adds as many zeros as free particles
     trap_times = np.concatenate((trap_times, np.zeros(num_free_part)))
