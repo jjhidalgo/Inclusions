@@ -18,7 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as lgsp
 import ipdb
-verbose = False
+verbose = True #False
 ################
 def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
@@ -1461,9 +1461,9 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
             fname = filename + '-' + fname
 
     if saveit or showfig:
+
         num_incl = len(t_in_incl)
-        bins = np.arange(0, num_incl + 1)
-        bins = np.arange(0, np.max(incl_per_part) + 1)
+        bins = np.arange(0, num_incl + 2)
         plot_hist(incl_per_part, title='', bins=bins,
                   showfig=showfig, savefig=savefig, savedata=saveit,
                   figname=fname)
@@ -1571,6 +1571,7 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
         print('Permeability data.')
         print('============ ====')
         print('Lx = '+ str(grid['Lx']))
+        print('Ny = '+ str(grid['Ny']))
         print('radius = '+ str(circles[0]['r']))
         print('inclusions = '+ str(circles.shape[0]))
         incl_area = inclusion_area(grid, circles, kperm=kperm)
