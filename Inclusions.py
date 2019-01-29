@@ -30,7 +30,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    plotTpt=False, plotBTC=False,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
-                   overlapTol=None):
+                   overlapTol=None, num_control_planes=1):
     """ Runs a simulation."""
 
     grid = setup_grid(Lx, Ny)
@@ -70,7 +70,9 @@ def run_simulation(*, Lx=1., Ny=50,
         arrival_times, t_in_incl = transport_pollock(grid, incl_ind,
                                                      Npart, ux, uy,
                                                      isPeriodic=isPeriodic,
-                                                     plotit=plotTpt, CC=kperm)
+                                                     plotit=plotTpt, CC=kperm,
+                                                     num_control_planes=num_control_planes,
+                                                     fname=filename)
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
@@ -1464,7 +1466,7 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
 
         num_incl = len(t_in_incl)
         bins = np.arange(0, num_incl + 2)
-        plot_hist(incl_per_part, title='', bins=bins,
+        plot_hist(incl_per_part, title='', bins=bins, density=False,
                   showfig=showfig, savefig=savefig, savedata=saveit,
                   figname=fname)
 
@@ -1722,7 +1724,8 @@ def velocity_distribution_from_file(fname, folder='.'):
 
     return True
 ################
-def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = False, CC=None):
+def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = False, CC=None,
+                      num_control_planes=1, fname=None):
     '''...'''
 
     # Geometry
@@ -1750,6 +1753,12 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
     case_x = pollock_case(ux1, ux2)
     case_y = pollock_case(uy1, uy2)
 
+    #cbtc control planes.
+    xcp = np.arange(Lx/num_control_planes,
+                    Lx + Lx/num_control_planes,
+                    Lx/num_control_planes)
+
+    cp_writen = np.zeros(num_control_planes)
 
     arrival_times = np.zeros(Npart)
 
@@ -1887,6 +1896,20 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
 
         #update number of particles still inside the domain.
         isIn = np.where((Lx - xp) > dx/2.)[0]
+
+        #cbtc and trapping events at intermediate control planes
+        for icp in range(num_control_planes - 1):
+            vorcp = np.where((xcp[icp] - xp) > dx/2.)[0]
+            if vorcp.size < 1 and not cp_writen[icp]:
+                filename = 'cp' + str(icp)
+                if fname is not None:
+                    filename = fname + '-' + filename
+
+                _, _ = compute_cbtc(arrival_times, bins='auto',
+                                    saveit=True, filename=filename)
+                _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
+                                           filename=filename)
+                cp_writen[icp] = True
 
     return  arrival_times, t_in_incl
 

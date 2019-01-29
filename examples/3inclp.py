@@ -10,4 +10,4 @@ run_simulation(Lx=3., Ny=400,
                    plotPerm=False, plotFlow=False,
                    plotTpt=False, plotBTC=False,
                    filename='3inclp', doPost=True,
-                   doVelPost=False)
+                   doVelPost=False, num_control_planes=4)
