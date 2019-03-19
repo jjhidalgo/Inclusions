@@ -1909,6 +1909,8 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
                                     saveit=True, filename=filename)
                 _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
                                            filename=filename)
+
+                np.save(filename + '.npy', arrival_times)
                 cp_writen[icp] = True
 
     return  arrival_times, t_in_incl
