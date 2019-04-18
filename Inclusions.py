@@ -1911,6 +1911,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
                                            filename=filename)
 
                 np.save(filename + '.npy', arrival_times)
+                np.save(filename + '-trap-events.npy', t_in_incl)
                 cp_writen[icp] = True
 
     return  arrival_times, t_in_incl
