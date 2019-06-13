@@ -397,7 +397,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
 
     if plotit and  CC is not None:
         figt, axt, cbt = plot2D(grid, CC)
-
+        
     t = 0.
 
     xp = np.zeros(Npart)
@@ -422,6 +422,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     y1 = np.arange(0., Ly + dy, dy)
 
     i = 0
+    #ipng = 0
 
     lint = None
 
@@ -505,15 +506,16 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
             print("Time: %f. Particles inside: %e" %(t, isIn.size))
 
             if plotit:
+                #ipng = ipng + 1
                 figt, axt, lint = plotXY(xp[isIn], yp[isIn], figt, axt, lint)
                 axt.set_aspect('equal')
                 axt.set_xlim([0., Lx])
                 axt.set_ylim([0., Ly])
                 plt.title(t)
+                #plt.savefig(str(int(ipng)).zfill(4), dpi=600)
 
     print("Time: %f. Particles inside: %e" %(t, np.sum(isIn)))
     print("End of transport.")
-
     return arrival_times, t_in_incl
 
 #####
@@ -1349,7 +1351,8 @@ def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
 def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
                         edgeColor='k', fill=False, axisColor='k',
                         backgroundColor='w', showTicks=True,
-                        allowClose=True, showFig=True, saveFig=False):
+                        allowClose=True, showFig=True, saveFig=False,
+                        removeBuffer=False):
     '''Load permeability data from plk file and plots it.
        The color options allow to generate a image that can be used to
        compute the inclusion distribution properties. For example,
@@ -1361,6 +1364,12 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
     #TO DO : check that file exists.
     grid, circles, Kfactor = load_perm(fname)
 
+    if removeBuffer:
+        radius = circles[0]['r']
+        displacement = np.ceil(4.*radius)
+        grid = setup_grid(grid['Lx'] - displacement, grid['Ny'])
+        circles[:]['x'] = circles[:]['x'] - 0.5*displacement
+        
     if plotWithCircles:
         fig = plt.figure()
         ax = fig.gca()
