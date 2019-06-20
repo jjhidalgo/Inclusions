@@ -1728,7 +1728,7 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
     return True
 ################
-def velocity_distribution_from_file(fname, folder='.'):
+def velocity_distribution_from_file(fname, folder='.',savedata=True):
     ''' Loads data and computes the velocity distributions.
     '''
     permfile = folder + '/' + fname
@@ -1739,7 +1739,7 @@ def velocity_distribution_from_file(fname, folder='.'):
 
     velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
                           bins='auto', showfig=False, savefig=False,
-                          savedata=True, fname=fname)
+                          savedata=savedata, fname=fname)
 
     return True
 ################
