@@ -1669,11 +1669,21 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
               figname=figname, figformat='pdf')
 
 
+    print('Velocity in matrix')
+    print('mean ux: ' +  str(uxm[kperm > 0.99].mean()))
+    print('mean uy: ' +  str(uym[kperm > 0.99].mean()))
+    print('mean v: ' +  str(vel[kperm > 0.99].mean()))
+
     figname = fname + '-vel-mat-no-buffer'
     mask = (kperm > 0.99) & (xx > xmin) & (xx < xmax)
     plot_hist(vel[mask], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
+
+    print('Velocity in matrix (no buffer)')
+    print('mean ux: ' +  str(uxm[mask].mean()))
+    print('mean uy: ' +  str(uym[mask].mean()))
+    print('mean v: ' +  str(vel[mask].mean()))
 
     figname = fname + '-vel-all'
 
