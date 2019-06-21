@@ -1634,7 +1634,8 @@ def get_mesh(grid, centering='cell'):
 ################
 def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
                           bins='auto', showfig=False, savefig=False,
-                          savedata=False, fname=''):
+                          savedata=False, fname='', directSolver=True,
+                          tol=1e-10, maxiter=2000):
 
     """Computes the velocity distribution in the inclusions.
     """
@@ -1644,7 +1645,8 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
     xmin = np.min(xx[kperm < 1.])
 
     if ux is None or uy is None:
-        ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False)
+        ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False,
+                      directSolver=directSolver, tol=tol, maxiter=maxiter)
 
     uxm = (ux[:, 0:-1] + ux[:, 1:])/2.
     uym = (uy[0:-1, :] + uy[1:, :])/2.
@@ -1728,7 +1730,8 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
     return True
 ################
-def velocity_distribution_from_file(fname, folder='.',savedata=True):
+def velocity_distribution_from_file(fname, folder='.',savedata=True,
+                                    directSolver=True):
     ''' Loads data and computes the velocity distributions.
     '''
     permfile = folder + '/' + fname
@@ -1739,7 +1742,8 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True):
 
     velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
                           bins='auto', showfig=False, savefig=False,
-                          savedata=savedata, fname=fname)
+                          savedata=savedata, fname=fname,
+                          directSolver=directSolver)
 
     return True
 ################
