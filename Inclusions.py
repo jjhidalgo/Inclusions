@@ -35,13 +35,14 @@ def run_simulation(*, Lx=1., Ny=50,
 
     grid = setup_grid(Lx, Ny)
 
-    kperm, incl_ind, grid = permeability(grid, n_incl_y, Kfactor,
-                                         target_incl_area=target_incl_area,
-                                         radius=radius, isPeriodicK=isPeriodic,
-                                         pack=pack, filename=filename,
-                                         plotit=plotPerm, saveit=True,
-                                         overlapTol=overlapTol,
-                                         calcKinfo=True, calcKeff=False)
+    kperm, incl_ind, grid, xcp = permeability(grid, n_incl_y, Kfactor,
+                                              target_incl_area=target_incl_area,
+                                              radius=radius, isPeriodicK=isPeriodic,
+                                              pack=pack, filename=filename,
+                                              plotit=plotPerm, saveit=True,
+                                              overlapTol=overlapTol,
+                                              calcKinfo=True, calcKeff=False,
+                                              num_control_planes=num_control_planes)
 
     ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
                   plotHead=plotFlow,
@@ -71,7 +72,7 @@ def run_simulation(*, Lx=1., Ny=50,
                                                      Npart, ux, uy,
                                                      isPeriodic=isPeriodic,
                                                      plotit=plotTpt, CC=kperm,
-                                                     num_control_planes=num_control_planes,
+                                                     xcp=xcp,
                                                      fname=filename)
 
     if filename is None:
@@ -81,6 +82,9 @@ def run_simulation(*, Lx=1., Ny=50,
                                    saveit=True, showfig=plotBTC, savefig=False,
                                    filename=filename)
 
+    btc_time, btc = compute_btc(arrival_times,
+                                saveit=True, showfig=plotBTC, savefig=False,
+                                filename=filename)
 
     with open(filename + '.plk', 'wb') as ff:
         pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
@@ -130,7 +134,7 @@ def unpack_grid(grid):
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
                  filename=None, plotit=False, saveit=True, overlapTol=None,
-                 calcKinfo=True, calcKeff=False):
+                 calcKinfo=True, calcKeff=False, num_control_planes=0):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -203,6 +207,22 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     displacement = np.ceil(4.*radius)
     pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
 
+    # control planes position
+    # The position is calculated from the end of the left buffer.
+    if num_control_planes>0:
+        xcp = np.arange(Lx/num_control_planes,
+                        Lx + Lx/num_control_planes,
+                        Lx/num_control_planes)
+        xcp = xcp + 0.5*displacement
+        print()
+        print("Control planes")
+        print("======= ======")
+        print(xcp)
+        print()
+    else:
+        xcp = None
+
+
     # if no discretization is given a 30th of the smallest inclusion's
     # radius is chosen as cell size.
     if Ny < 1:
@@ -210,6 +230,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
 
     grid = setup_grid(Lx + displacement, Ny)
     kperm, incl_ind = perm_matrix(grid, pore.circles, Kfactor)
+
 
     if plotit:
         plot2D(grid, kperm, title='kperm', allowClose=True)
@@ -229,7 +250,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
                           calcKeff=calcKeff)
 
-    return kperm, incl_ind, grid
+    return kperm, incl_ind, grid, xcp
 
 ################
 def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
@@ -385,8 +406,8 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
     return ux/dy, uy/dx
 
 #####
-def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
-              plotit=False, CC=None):
+def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
+              isPeriodic=False, plotit=False, CC=None):
     '''Solves the transport of a line of concentration initially at the
        left boundary using a particle tracking method.
 
@@ -443,6 +464,10 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
     i = 0
 
     isIn = np.where(xp < Lx)[0]
+    if Diff is not None:
+        Dm = np.sqrt(2.*Diff*dt)
+        vv = []
+        tt = []
     if tmax is None:
         print('tmax not defined. tmax = 1.0')
         tmax = 1.0
@@ -484,6 +509,11 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
         xp[isIn] = xp[isIn] + (ux[ix] + Ax[ix]*(xp[isIn] - x1[indx]))*dt
         yp[isIn] = yp[isIn] + (uy[ix] + Ay[ix]*(yp[isIn] - y1[indy]))*dt
 
+        if Diff is not None:
+            nn = xp[isIn].shape[0]
+            xp[isIn] = xp[isIn] + Dm*np.random.normal(0,1,nn)
+            yp[isIn] = yp[isIn] + Dm*np.random.normal(0,1,nn)
+
         #print ["{0:0.19f}".format(i) for i in yp]
 
         xp[xp < 0.] = 0.
@@ -516,6 +546,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, isPeriodic=False,
 
     print("Time: %f. Particles inside: %e" %(t, np.sum(isIn)))
     print("End of transport.")
+
     return arrival_times, t_in_incl
 
 #####
@@ -1748,7 +1779,7 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True,
     return True
 ################
 def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = False, CC=None,
-                      num_control_planes=1, fname=None):
+                      xcp=None, fname=None):
     '''...'''
 
     # Geometry
@@ -1776,13 +1807,15 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
     case_x = pollock_case(ux1, ux2)
     case_y = pollock_case(uy1, uy2)
 
-    #cbtc control planes.
-    xcp = np.arange(Lx/num_control_planes,
-                    Lx + Lx/num_control_planes,
-                    Lx/num_control_planes)
+    #control planes
+    num_control_planes = 0
+    cp_writen = True
 
-    cp_writen = np.zeros(num_control_planes)
+    if xcp is not None:
+        num_control_planes = xcp.shape[0]
+        cp_writen = np.zeros(xcp.shape)
 
+    
     arrival_times = np.zeros(Npart)
 
     #number of inclusions
@@ -1921,21 +1954,24 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = 
         isIn = np.where((Lx - xp) > dx/2.)[0]
 
         #cbtc and trapping events at intermediate control planes
-        for icp in range(num_control_planes - 1):
-            vorcp = np.where((xcp[icp] - xp) > dx/2.)[0]
-            if vorcp.size < 1 and not cp_writen[icp]:
-                filename = 'cp' + str(icp)
-                if fname is not None:
-                    filename = fname + '-' + filename
+        if num_control_planes>0:
+            for icp in range(num_control_planes - 1):
+                vorcp = np.where((xcp[icp] - xp) > dx/2.)[0]
+                if vorcp.size < 1 and not cp_writen[icp]:
+                    filename = 'cp' + str(icp)
+                    if fname is not None:
+                       filename = fname + '-' + filename
 
-                _, _ = compute_cbtc(arrival_times, bins='auto',
-                                    saveit=True, filename=filename)
-                _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
-                                           filename=filename)
+                    _, _ = compute_cbtc(arrival_times, bins='auto',
+                                        saveit=True, filename=filename)
+                    _, _ = compute_btc(arrival_times, bins='auto',
+                                       saveit=True, filename=filename)
+                    _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
+                                               filename=filename)
 
-                np.save(filename + '.npy', arrival_times)
-                np.save(filename + '-trap-events.npy', t_in_incl)
-                cp_writen[icp] = True
+                    np.save(filename + '.npy', arrival_times)
+                    np.save(filename + '-trap-events.npy', t_in_incl)
+                    cp_writen[icp] = True
 
     return  arrival_times, t_in_incl
 
@@ -2028,3 +2064,26 @@ def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
 
     return xp, yp
 ##################
+def compute_btc(arrival_times, bins='auto', saveit=False,
+                 logx=False, logy=False, showfig=False,
+                 savefig=False, filename=None):
+    ''' Breakthrough curve from arrival times.'''
+    Npart = arrival_times.shape[0]
+
+    vals, edges = np.histogram(arrival_times, bins=bins, density=False)
+    btc_time = (edges[:-1] + edges[1:])/2.
+
+    if saveit:
+        fname = 'btc-h' + '.dat'
+        if filename is not None:
+            fname = filename + '-' + fname
+
+        np.savetxt(fname, np.matrix([btc_time, vals/Npart]).transpose())
+    if showfig:
+        plotXY(btc_time, vals/Npart, logx=logx, logy=logy, allowClose=True)
+
+        if savefig:
+            save_fig(xlabel='time', ylabel='cbtc', title='',
+                     figname=fname, fogformat='pdf')
+
+    return btc_time, vals/Npart
