@@ -30,7 +30,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    plotTpt=False, plotBTC=False,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
-                   overlapTol=None, num_control_planes=1):
+                   overlapTol=None, control_planes=1):
     """ Runs a simulation."""
 
     grid = setup_grid(Lx, Ny)
@@ -42,7 +42,7 @@ def run_simulation(*, Lx=1., Ny=50,
                                               plotit=plotPerm, saveit=True,
                                               overlapTol=overlapTol,
                                               calcKinfo=True, calcKeff=False,
-                                              num_control_planes=num_control_planes)
+                                              control_planes=control_planes)
 
     ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
                   plotHead=plotFlow,
@@ -134,7 +134,7 @@ def unpack_grid(grid):
 def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
                  filename=None, plotit=False, saveit=True, overlapTol=None,
-                 calcKinfo=True, calcKeff=False, num_control_planes=0):
+                 calcKinfo=True, calcKeff=False, control_planes=None):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -209,18 +209,29 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
 
     # control planes position
     # The position is calculated from the end of the left buffer.
-    if num_control_planes>0:
-        xcp = np.arange(Lx/num_control_planes,
-                        Lx + Lx/num_control_planes,
-                        Lx/num_control_planes)
-        xcp = xcp + 0.5*displacement
+    if control_planes is not None:
+
+        if np.isscalar(control_planes) and control_planes > 0:
+            control_planes = np.arange(Lx/control_planes,
+                             Lx + Lx/control_planes,
+                             Lx/control_planes)
+
+        else:
+            control_planes = np.array(control_planes)
+            control_planes.sort()
+
+        if (control_planes > 0.).all() and (control_planes <= Lx).all():
+            control_planes = control_planes + 0.5*displacement
+        else:
+            print('Wrong control planes!')
+            control_planes = None
+
+
         print()
         print("Control planes")
         print("======= ======")
-        print(xcp)
+        print(control_planes)
         print()
-    else:
-        xcp = None
 
 
     # if no discretization is given a 30th of the smallest inclusion's
@@ -250,7 +261,7 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
                           calcKeff=calcKeff)
 
-    return kperm, incl_ind, grid, xcp
+    return kperm, incl_ind, grid, control_planes
 
 ################
 def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
@@ -1778,8 +1789,8 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True,
 
     return True
 ################
-def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False, plotit = False, CC=None,
-                      xcp=None, fname=None):
+def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
+                      plotit = False, CC=None, xcp=None, fname=None):
     '''...'''
 
     # Geometry
