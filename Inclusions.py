@@ -1966,13 +1966,14 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
 
         #cbtc and trapping events at intermediate control planes
         if num_control_planes>0:
-            for icp in range(num_control_planes - 1):
+            for icp in range(num_control_planes):
                 vorcp = np.where((xcp[icp] - xp) > dx/2.)[0]
                 if vorcp.size < 1 and not cp_writen[icp]:
                     filename = 'cp' + str(icp)
                     if fname is not None:
                        filename = fname + '-' + filename
 
+                    print('Control plane ' + str(icp) + ' at x = ' + str(xcp[icp]))
                     _, _ = compute_cbtc(arrival_times, bins='auto',
                                         saveit=True, filename=filename)
                     _, _ = compute_btc(arrival_times, bins='auto',
