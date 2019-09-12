@@ -2082,7 +2082,7 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
     ''' Breakthrough curve from arrival times.'''
     Npart = arrival_times.shape[0]
 
-    vals, edges = np.histogram(arrival_times, bins=bins, density=False)
+    vals, edges = np.histogram(arrival_times, bins=bins, density=True)
     btc_time = (edges[:-1] + edges[1:])/2.
 
     if saveit:
@@ -2098,4 +2098,4 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
             save_fig(xlabel='time', ylabel='cbtc', title='',
                      figname=fname, fogformat='pdf')
 
-    return btc_time, vals/Npart
+    return btc_time, vals
