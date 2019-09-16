@@ -948,6 +948,10 @@ def postprocess(Npart, t_in_incl, arrival_times, fname='',
                  showfig=showfig, savefig=savefig,
                  filename=fname)
 
+    compute_btc(arrival_times, bins='auto', saveit=savedata,
+                showfig=showfig, savefig=savefig,
+                filename=fname)
+
     t_mobile, t_immobile = mobile_immobile_time(t_in_incl, arrival_times,
                                                 filename=fname,
                                                 saveit=savedata)
@@ -991,7 +995,7 @@ def postprocess_all(savedata=True, savefig=False,
                     showfig=False, figformat='pdf',
                     bins='auto', dofullpostp=False):
 
-    """ Post process al the cases in a folder."""
+    """ Post process all the cases in a folder."""
 
     import os as os
 
@@ -2090,7 +2094,7 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
         if filename is not None:
             fname = filename + '-' + fname
 
-        np.savetxt(fname, np.matrix([btc_time, vals/Npart]).transpose())
+        np.savetxt(fname, np.matrix([btc_time, vals]).transpose())
     if showfig:
         plotXY(btc_time, vals/Npart, logx=logx, logy=logy, allowClose=True)
 
