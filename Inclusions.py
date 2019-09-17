@@ -184,7 +184,10 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
                             target_porosity=1.-target_incl_area,
                             packing='rnd')
 
-        pore.ngrains_max = int(5*n_incl)
+        #maximum number of grains computed according to target porosity
+        ngrains_max = (target_incl_area*Lx*Ly)/(np.pi*radius**2)
+        pore.ngrains_max = int(np.ceil(ngrains_max))
+        print( 'Maximum number of grains set to: ' + str(pore.ngrains_max))
         pore.ntries_max = int(1e5)
 
         if overlapTol is None:
@@ -427,7 +430,10 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
-    if plotit and  CC is not None:
+    if plotit and CC is None:
+        CC = np.ones((Ny, Nx))
+    
+    if plotit:
         figt, axt, cbt = plot2D(grid, CC)
         
     t = 0.
@@ -2084,7 +2090,6 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
                  logx=False, logy=False, showfig=False,
                  savefig=False, filename=None):
     ''' Breakthrough curve from arrival times.'''
-    Npart = arrival_times.shape[0]
 
     vals, edges = np.histogram(arrival_times, bins=bins, density=True)
     btc_time = (edges[:-1] + edges[1:])/2.
@@ -2096,7 +2101,7 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
 
         np.savetxt(fname, np.matrix([btc_time, vals]).transpose())
     if showfig:
-        plotXY(btc_time, vals/Npart, logx=logx, logy=logy, allowClose=True)
+        plotXY(btc_time, vals, logx=logx, logy=logy, allowClose=True)
 
         if savefig:
             save_fig(xlabel='time', ylabel='cbtc', title='',
