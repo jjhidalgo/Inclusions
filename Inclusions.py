@@ -180,13 +180,14 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     elif pack == 'rnd':
 
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
-                            rmin=0.90*radius, rmax=0.90*radius,
+                            rmin=radius, rmax=radius,
                             target_porosity=1.-target_incl_area,
                             packing='rnd')
 
         #maximum number of grains computed according to target porosity
+        #Added 10% more grains
         ngrains_max = (target_incl_area*Lx*Ly)/(np.pi*radius**2)
-        pore.ngrains_max = int(np.ceil(ngrains_max))
+        pore.ngrains_max = int(np.ceil(ngrains_max*1.1))
         print( 'Maximum number of grains set to: ' + str(pore.ngrains_max))
         pore.ntries_max = int(1e5)
 
