@@ -1991,6 +1991,8 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
                                        saveit=True, filename=filename)
                     _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
                                                filename=filename)
+                    _, _ = time_per_inclusion(t_in_incl, Npart, bins='auto',
+                                              saveit=True, filename=filename)
 
                     np.save(filename + '.npy', arrival_times)
                     np.save(filename + '-trap-events.npy', t_in_incl)
