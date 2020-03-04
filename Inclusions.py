@@ -1836,8 +1836,10 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
     if xcp is not None:
         num_control_planes = xcp.shape[0]
         cp_writen = np.zeros(xcp.shape)
-
-    
+        arrival_times_cp = np.zeros((Npart, num_control_planes))
+        xpmax_cp = np.zeros(num_control_planes)
+        xpmin_cp = np.zeros(num_control_planes)
+        
     arrival_times = np.zeros(Npart)
 
     #number of inclusions
@@ -1975,27 +1977,44 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
         #update number of particles still inside the domain.
         isIn = np.where((Lx - xp) > dx/2.)[0]
 
-        #cbtc and trapping events at intermediate control planes
+        #btc, cbtc, and trapping events at intermediate control planes
+        # trapping events TO DO 
         if num_control_planes>0:
             for icp in range(num_control_planes):
                 vorcp = np.where((xcp[icp] - xp) > dx/2.)[0]
+
+                if vorcp.size > 0 and not cp_writen[icp]:
+                    #xpmax_cp[icp] = xp[vorcp].max()
+                    #xpmin_cp[icp] = xp[vorcp].min()
+                    #print('xpmax added ' + str(xpmax_cp[icp]) + ' at plane ' + str(icp)
+                    #      + ' x = ' + str(xcp[icp]))
+                    #if xpmax_cp[icp] > xcp[icp]:
+                    #    ipdb.set_trace()
+                          
+                    arrival_times_cp[vorcp,icp] = arrival_times[vorcp]
+                    
                 if vorcp.size < 1 and not cp_writen[icp]:
                     filename = 'cp' + str(icp)
+
                     if fname is not None:
                        filename = fname + '-' + filename
-
+                    #print('')
                     print('Control plane ' + str(icp) + ' at x = ' + str(xcp[icp]))
-                    _, _ = compute_cbtc(arrival_times, bins='auto',
-                                        saveit=True, filename=filename)
-                    _, _ = compute_btc(arrival_times, bins='auto',
-                                       saveit=True, filename=filename)
-                    _ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
-                                               filename=filename)
-                    _, _ = time_per_inclusion(t_in_incl, Npart, bins='auto',
-                                              saveit=True, filename=filename)
+                    #print('xpmax ' + str(xpmax_cp[icp]))
+                    #print('xpmin ' + str(xpmin_cp[icp]))
+                    #print('')
 
-                    np.save(filename + '.npy', arrival_times)
-                    np.save(filename + '-trap-events.npy', t_in_incl)
+                    _, _ = compute_cbtc(arrival_times_cp[:,icp], bins='auto',
+                                        saveit=True, filename=filename)
+                    _, _ = compute_btc(arrival_times_cp[:,icp], bins='auto',
+                                       saveit=True, filename=filename,showfig=False)
+                    #_ = inclusion_per_particle(t_in_incl, Npart, saveit=True,
+                    #                           filename=filename)
+                    #_, _ = time_per_inclusion(t_in_incl, Npart, bins='auto',
+                    #                          saveit=True, filename=filename)
+
+                    np.save(filename + '.npy', arrival_times_cp[:,icp])
+                    #np.save(filename + '-trap-events.npy', t_in_incl)
                     cp_writen[icp] = True
 
     return  arrival_times, t_in_incl
