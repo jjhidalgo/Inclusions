@@ -30,7 +30,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    plotTpt=False, plotBTC=False,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
-                   overlapTol=None, control_planes=1):
+                   overlapTol=None, control_planes=1, InjSize=1.):
     """ Runs a simulation."""
 
     grid = setup_grid(Lx, Ny)
@@ -62,7 +62,7 @@ def run_simulation(*, Lx=1., Ny=50,
         arrival_times, t_in_incl = transport(grid, incl_ind,
                                              Npart, ux, uy,
                                              tmax, dt, isPeriodic=isPeriodic,
-                                             plotit=plotTpt, CC=kperm)
+                                             plotit=plotTpt, CC=kperm, InjSize=InjSize)
     elif transportMethod == 'streamlines':
         arrival_times, t_in_incl = transport_ds(grid, incl_ind,
                                                 Npart, ux, uy,
@@ -73,7 +73,7 @@ def run_simulation(*, Lx=1., Ny=50,
                                                      isPeriodic=isPeriodic,
                                                      plotit=plotTpt, CC=kperm,
                                                      xcp=xcp,
-                                                     fname=filename)
+                                                     fname=filename,InjSize=InjSize)
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
@@ -422,7 +422,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
 #####
 def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
-              isPeriodic=False, plotit=False, CC=None):
+              isPeriodic=False, plotit=False, CC=None, InjSize=1.):
     '''Solves the transport of a line of concentration initially at the
        left boundary using a particle tracking method.
 
@@ -440,7 +440,9 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
     t = 0.
 
     xp = np.zeros(Npart)
-    yp = np.arange(Ly/Npart/2.0, Ly, Ly/Npart)
+    yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjeSize*Ly)/Npart)
+    yp = yp + 0.5 - InjSize/2.
+    
     #qq
     #rad = 0.25231325
     #alpha = np.arange(np.pi/Npart/2.0, np.pi, np.pi/Npart)
@@ -1801,7 +1803,7 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True,
     return True
 ################
 def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
-                      plotit = False, CC=None, xcp=None, fname=None):
+                      plotit = False, CC=None, xcp=None, fname=None,InjSize=1.):
     '''...'''
 
     # Geometry
@@ -2118,7 +2120,7 @@ def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
 def compute_btc(arrival_times, bins='auto', saveit=False,
                  logx=False, logy=False, showfig=False,
                  savefig=False, filename=None):
-    ''' Breakthrough curve from arrival times.'''
+    ''' Breakthrough curve from arrival times.'''  
 
     vals, edges = np.histogram(arrival_times, bins=bins, density=True)
     btc_time = (edges[:-1] + edges[1:])/2.
