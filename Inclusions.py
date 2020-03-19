@@ -440,7 +440,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
     t = 0.
 
     xp = np.zeros(Npart)
-    yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjeSize*Ly)/Npart)
+    yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjSize*Ly)/Npart)
     yp = yp + 0.5 - InjSize/2.
     
     #qq
@@ -1877,7 +1877,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
 
     #initial position of particles
     xp = np.zeros(Npart)
-    yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjeSize*Ly)/Npart)
+    yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjSize*Ly)/Npart)
     yp = yp + 0.5 - InjSize/2.
     
     isIn = np.where(xp < Lx)[0]
