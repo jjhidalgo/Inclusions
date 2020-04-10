@@ -58,6 +58,8 @@ def run_simulation(*, Lx=1., Ny=50,
         else:
             dt = 0.1*Kfactor*grid['Lx']/grid['Nx']
 
+    transportSolved = True
+
     if transportMethod == 'time':
         arrival_times, t_in_incl = transport(grid, incl_ind,
                                              Npart, ux, uy,
@@ -74,20 +76,26 @@ def run_simulation(*, Lx=1., Ny=50,
                                                      plotit=plotTpt, CC=kperm,
                                                      xcp=xcp,
                                                      fname=filename,InjSize=InjSize)
+    elif transportMethod is None:
+        print("Transport not solved.\n")
+        transportSolved = False
+
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
 
-    cbtc_time, cbtc = compute_cbtc(arrival_times,
-                                   saveit=True, showfig=plotBTC, savefig=False,
-                                   filename=filename)
 
-    btc_time, btc = compute_btc(arrival_times,
-                                saveit=True, showfig=plotBTC, savefig=False,
-                                filename=filename)
+    if transportSolved:
+        cbtc_time, cbtc = compute_cbtc(arrival_times,
+                                       saveit=True, showfig=plotBTC, savefig=False,
+                                       filename=filename)
 
-    with open(filename + '.plk', 'wb') as ff:
-        pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
+        btc_time, btc = compute_btc(arrival_times,
+                                    saveit=True, showfig=plotBTC, savefig=False,
+                                    filename=filename)
+
+        with open(filename + '.plk', 'wb') as ff:
+            pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
 
     print("End of simulation.\n")
 
@@ -96,7 +104,7 @@ def run_simulation(*, Lx=1., Ny=50,
                           bins='auto', showfig=False, savefig=False,
                               savedata=True, fname=filename)
 
-    if doPost:
+    if doPost and transportSolved:
 
         postprocess(Npart, t_in_incl, arrival_times, fname=filename,
                     savedata=True, savefig=False,
