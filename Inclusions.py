@@ -1656,6 +1656,8 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
         print('Horizontal = ' + str(h_avg) + ' (' + str(h_avg_nonzero) + ')')
         print('Vertical = ' + str(v_avg) + ' (' + str(v_avg_nonzero) + ')')
 
+        print('Kfactor = '+ str(Kfactor))
+
         if calcKeff:
             keff = equivalent_permeability(grid, kperm,
                                            directSolver=directSolver,
