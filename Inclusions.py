@@ -24,6 +24,8 @@ def run_simulation(*, Lx=1., Ny=50,
                    pack='tri', n_incl_y=3, Kfactor=0.1,
                    target_incl_area=0.5, radius=None,
                    bcc='head', isPeriodic=True, integrateInTime=False,
+                   flowMethod='CalcPerm',
+                   saveVel=False,
                    transportMethod='pollock',
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
@@ -33,21 +35,41 @@ def run_simulation(*, Lx=1., Ny=50,
                    overlapTol=None, control_planes=1, InjSize=1.):
     """ Runs a simulation."""
 
-    grid = setup_grid(Lx, Ny)
+# Flow methods : CalcPerm, ReadPerm, ReadVel
 
-    kperm, incl_ind, grid, xcp = permeability(grid, n_incl_y, Kfactor,
-                                              target_incl_area=target_incl_area,
-                                              radius=radius, isPeriodicK=isPeriodic,
-                                              pack=pack, filename=filename,
-                                              plotit=plotPerm, saveit=True,
-                                              overlapTol=overlapTol,
-                                              calcKinfo=True, calcKeff=False,
-                                              control_planes=control_planes)
+    if flowMethod == 'CalcPerm':
+        print('calculo')
+        grid = setup_grid(Lx, Ny)
+        kperm, incl_ind, grid, xcp = permeability(grid, n_incl_y, Kfactor,
+                                                  target_incl_area=target_incl_area,
+                                                  radius=radius, isPeriodicK=isPeriodic,
+                                                  pack=pack, filename=filename,
+                                                  plotit=plotPerm, saveit=True,
+                                                  overlapTol=overlapTol,
+                                                  calcKinfo=True, calcKeff=False,
+                                                  control_planes=control_planes)
 
-    ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
-                  plotHead=plotFlow,
-                  directSolver=directSolver,
-                  tol=tol, maxiter=maxiter)
+    if flowMethod == 'ReadPerm':
+        print('Reading permeability from file...')
+        grid, circles, Kfactor = load_perm('./perm/' + filename)
+        kperm, incl_ind  = perm_matrix(grid, circles, Kfactor)
+        displacement = np.ceil(4.*circles[0]['r'])
+        xcp = control_planes_position(grid['Lx']-displacement, displacement=displacement,
+                                      control_planes=control_planes)
+
+        permeability_data(grid=grid, circles=circles, Kfactor=Kfactor, calcKeff=False)
+
+
+    if flowMethod == 'ReadVel':
+        ux = np.load('./veldata/' + filename + '-ux.npy')
+        uy = np.load('./veldata/' + filename + '-uy.npy')
+
+    else:
+        ux, uy = flow(grid, 1./kperm, bcc, isPeriodic=isPeriodic,
+                      plotHead=plotFlow,
+                      directSolver=directSolver,
+                      tol=tol, maxiter=maxiter,
+                      saveVel=saveVel, filename=filename)
 
     if dt is None:
         if integrateInTime:
@@ -220,30 +242,10 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
 
     # control planes position
-    # The position is calculated from the end of the left buffer.
-    if control_planes is not None:
-
-        if np.isscalar(control_planes) and control_planes > 0:
-            control_planes = np.arange(Lx/control_planes,
-                             Lx + Lx/control_planes,
-                             Lx/control_planes)
-
-        else:
-            control_planes = np.array(control_planes)
-            control_planes.sort()
-
-        if (control_planes > 0.).all() and (control_planes <= Lx).all():
-            control_planes = control_planes + 0.5*displacement
-        else:
-            print('Wrong control planes!')
-            control_planes = None
-
-
-        print()
-        print("Control planes")
-        print("======= ======")
-        print(control_planes)
-        print()
+    # Lx has not the displacement length.
+    control_planes = control_planes_position(Lx, 
+                                             displacement=displacement,
+                                             control_planes=control_planes)
 
 
     # if no discretization is given a 30th of the smallest inclusion's
@@ -277,7 +279,8 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
 
 ################
 def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
-         directSolver=True, tol=1e-10, maxiter=2000):
+         directSolver=True, tol=1e-10, maxiter=2000,
+         saveVel=False, filename=None):
     ''' Solves the flow equation and returns the velocity
         at the cell's faces.
         mu = 1./kperm
@@ -425,6 +428,11 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
         plot2D(grid, head, title='head', allowClose=True)
         plot2D(grid, ux/dy, title='ux', allowClose=True)
         plot2D(grid, uy/dx, title='uy', allowClose=True)
+
+    if saveVel:
+        fname = (filename is not None)*(filename +'-')
+        np.save(fname + 'ux.npy', ux)
+        np.save(fname + 'uy.npy', uy)
 
     return ux/dy, uy/dx
 
@@ -2150,3 +2158,33 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
                      figname=fname, fogformat='pdf')
 
     return btc_time, vals
+##################
+def control_planes_position(Lx, displacement=0.0, control_planes=None):
+    ''' Position is calculated from the end of the left buffer.'''  
+
+    if control_planes is not None:
+
+        if np.isscalar(control_planes) and control_planes > 0:
+            control_planes = np.arange(Lx/control_planes,
+                             Lx + Lx/control_planes,
+                             Lx/control_planes)
+
+        else:
+            control_planes = np.array(control_planes)
+            control_planes.sort()
+
+        if (control_planes > 0.).all() and (control_planes <= Lx).all():
+            control_planes = control_planes + 0.5*displacement
+
+            print()
+            print("Control planes")
+            print("======= ======")
+            print(control_planes)
+            print()
+
+        else:
+            print('Wrong control planes!')
+            control_planes = None
+
+    return control_planes
+##################
