@@ -431,8 +431,8 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
     if saveVel:
         fname = (filename is not None)*(filename +'-')
-        np.save(fname + 'ux.npy', ux)
-        np.save(fname + 'uy.npy', uy)
+        np.save(fname + 'ux.npy', ux/dx)
+        np.save(fname + 'uy.npy', uy/dy)
 
     return ux/dy, uy/dx
 
