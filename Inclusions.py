@@ -21,11 +21,12 @@ import ipdb
 verbose = True #False
 ################
 def run_simulation(*, Lx=1., Ny=50,
-                   pack='tri', n_incl_y=3, Kfactor=0.1,
+                   pack='tri', n_incl_y=3, Kfactor=0.1,Kdist='const',
                    target_incl_area=0.5, radius=None,
                    bcc='head', isPeriodic=True, integrateInTime=False,
                    flowMethod='CalcPerm',
                    saveVel=False,
+                   calcPsi=False, plotPsi=False,savePsi=False,
                    transportMethod='pollock',
                    tmax=10., dt=None, Npart=100,
                    plotPerm=False, plotFlow=False,
@@ -40,7 +41,7 @@ def run_simulation(*, Lx=1., Ny=50,
     if flowMethod == 'CalcPerm':
         print('calculo')
         grid = setup_grid(Lx, Ny)
-        kperm, incl_ind, grid, xcp = permeability(grid, n_incl_y, Kfactor,
+        kperm, incl_ind, grid, xcp, Kincl = permeability(grid, n_incl_y, Kfactor,Kdist=Kdist,
                                                   target_incl_area=target_incl_area,
                                                   radius=radius, isPeriodicK=isPeriodic,
                                                   pack=pack, filename=filename,
@@ -52,7 +53,7 @@ def run_simulation(*, Lx=1., Ny=50,
     if flowMethod == 'ReadPerm':
         print('Reading permeability from file...')
         grid, circles, Kfactor = load_perm('./perm/' + filename)
-        kperm, incl_ind  = perm_matrix(grid, circles, Kfactor)
+        kperm, incl_ind, Kincl  = perm_matrix(grid, circles, Kfactor)
         displacement = np.ceil(4.*circles[0]['r'])
         xcp = control_planes_position(grid['Lx']-displacement, displacement=displacement,
                                       control_planes=control_planes)
@@ -71,6 +72,10 @@ def run_simulation(*, Lx=1., Ny=50,
                       tol=tol, maxiter=maxiter,
                       saveVel=saveVel, filename=filename)
 
+    if calcPsi:
+        psi = stream_function(grid, kperm, isPeriodic=isPeriodic,
+                              plotPsi=plotPsi, saveit=savePsi)
+
     if dt is None:
         if integrateInTime:
             tx = grid['Lx']/grid['Nx']/ux.max()
@@ -78,7 +83,8 @@ def run_simulation(*, Lx=1., Ny=50,
             dt = np.min([tx, ty, 1e-3])
 
         else:
-            dt = 0.1*Kfactor*grid['Lx']/grid['Nx']
+            dt = 0.1*Kincl.min()*grid['Lx']/grid['Nx']
+            
 
     transportSolved = True
 
@@ -161,7 +167,7 @@ def unpack_grid(grid):
     return grid['Lx'][0], grid['Ly'][0], grid['Nx'][0], grid['Ny'][0]
 
 ################
-def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
+def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
                  filename=None, plotit=False, saveit=True, overlapTol=None,
                  calcKinfo=True, calcKeff=False, control_planes=None):
@@ -190,11 +196,15 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         total_area = Lx*Ly
         radius = np.sqrt((target_incl_area*total_area)/(np.pi*n_incl))
 
-    #Pore throat is computed according to regular arrangements.
-    if isPeriodicK:
-        throat = (Ly - (2.0*n_incl_y*radius))/n_incl_y
     else:
-        throat = (Ly - 2.0*n_incl_y*radius)/(n_incl_y + 1.0)
+        radius = np.array(radius)
+
+    #Pore throat is computed according to regular arrangements.
+    # maximum radius chosen
+    if isPeriodicK:
+        throat = (Ly - (2.0*n_incl_y*radius.max()))/n_incl_y
+    else:
+        throat = (Ly - 2.0*n_incl_y*radius.max())/(n_incl_y + 1.0)
 
 
     if pack == 'sqr' or pack == 'tri':
@@ -207,16 +217,16 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
         pore.xoffset = 0.
         pore.throat = throat
 
-    elif pack == 'rnd':
-
+    elif 'rnd' in pack:
+            
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
-                            rmin=radius, rmax=radius,
+                            rmin=radius.min(), rmax=radius.max(),
                             target_porosity=1.-target_incl_area,
-                            packing='rnd')
+                            packing=pack)
 
         #maximum number of grains computed according to target porosity
         #Added 10% more grains
-        ngrains_max = (target_incl_area*Lx*Ly)/(np.pi*radius**2)
+        ngrains_max = (target_incl_area*Lx*Ly)/(np.pi*(radius.min())**2)
         pore.ngrains_max = int(np.ceil(ngrains_max*1.1))
         print( 'Maximum number of grains set to: ' + str(pore.ngrains_max))
         pore.ntries_max = int(1e5)
@@ -228,17 +238,24 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
 
     # Centers circles and resizes domain to avoid boundary effects
     # (2*radius added to the left and to the right).
-    xmin = np.min(pore.circles[:]['x'])
-    rr = pore.circles[0]['r']
+    # Maximum radius selected in case there is a size distribution.
+    ixmin = pore.circles['x'].argmin()
+    ixmax = pore.circles['x'].argmax()
+    xmin = pore.circles[ixmin]['x']
+    rmin = pore.circles[ixmin]['r']
+    rmax = pore.circles[ixmax]['r']
+
+
     #Leftmost circle's border moved to x=0.
-    pore.circles[:]['x'] = pore.circles[:]['x'] - xmin + rr
+    pore.circles[:]['x'] = pore.circles[:]['x'] - xmin + rmin
     #Space behind rightmost circle.
-    xmax = np.max(pore.circles[:]['x'])
-    displacement = Lx - (xmax + rr)
+    xmax = pore.circles['x'].max()
+    displacement = Lx - (xmax + rmin)
+
     #Circles centering
     pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
     #Adding of 4*r
-    displacement = np.ceil(4.*radius)
+    displacement = np.ceil(4.*rmin)
     pore.circles[:]['x'] = pore.circles[:]['x'] + 0.5*displacement
 
     # control planes position
@@ -251,14 +268,17 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
     # if no discretization is given a 30th of the smallest inclusion's
     # radius is chosen as cell size.
     if Ny < 1:
-        Ny = np.int(30/pore.circles[:]['r'].min())
+        Ny = np.int(30/rmin)
 
     grid = setup_grid(Lx + displacement, Ny)
-    kperm, incl_ind = perm_matrix(grid, pore.circles, Kfactor)
 
+    kperm, incl_ind, Kincl = perm_matrix(grid, pore.circles, Kfactor, Kdist=Kdist)
+
+    isLogNorm = (Kdist=='lognorm')
 
     if plotit:
-        plot2D(grid, kperm, title='kperm', allowClose=True)
+
+        plot2D(grid, kperm, title='kperm', plotLog=isLogNorm, allowClose=True)
 
     if saveit:
         if filename is None:
@@ -267,15 +287,15 @@ def permeability(grid, n_incl_y, Kfactor=1., pack='sqr',
             fname = filename + '-perm.plk'
 
         with open(fname, 'wb') as ff:
-            pickle.dump([grid, pore.circles, Kfactor],
+            pickle.dump([grid, pore.circles, Kfactor, Kdist, Kincl],
                         ff, pickle.HIGHEST_PROTOCOL)
         #pore.write_mesh(fname='g', meshtype='stl')
 
     if calcKinfo or calcKeff:
         permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
-                          calcKeff=calcKeff)
+                          Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff)
 
-    return kperm, incl_ind, grid, control_planes
+    return kperm, incl_ind, grid, control_planes, Kincl
 
 ################
 def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
@@ -732,7 +752,7 @@ def plotXY(x, y, fig=None, ax=None, lin=None, logx=False, logy=False,
     return fig, ax, lin
 ####
 def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
-           allowClose=False):
+           plotLog=False, allowClose=False):
     '''Function to do 2 dimensional plots of cell centerd or face centered
        varibles.'''
 
@@ -770,6 +790,9 @@ def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
 
     plt.sca(ax)
     plt.ion()
+
+    if plotLog:
+        C = np.log(C)
 
     mesh = ax.pcolormesh(xx, yy, C, cmap=cmap)
 
@@ -1034,7 +1057,7 @@ def postprocess_all(savedata=True, savefig=False,
                                   bins='auto', dofullpostp=dofullpostp)
     return True
 ################
-def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
+def stream_function(grid, kperm, isPeriodic=False, plotPsi=False, saveit=False):
     '''Compute the stream function.
     isPeriodic = False:
       The stream function is prescribed at the boundaries so that
@@ -1042,7 +1065,12 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
       boundaries and no flow on top and bottom boundaries.
     isPeriodic = True:
      TO DO'''
-
+    if isPeriodic==True:
+        print('')
+        print('Periodic boundary conditions in stream function not implemented.')
+        print('No flow conditions used.')
+        print('')
+        
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     dx = Lx/(Nx-1)
@@ -1095,6 +1123,12 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False):
     if plotPsi:
         plot_stream(psi, grid, kperm=kperm, circles=None)
 
+    if saveit:
+        fname = 'psi.npy'
+        if filename is not None:
+            fname = filename + '-' + fname
+        np.save(fname, psi)
+        
     return psi
 ################
 def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
@@ -1334,7 +1368,7 @@ def mobile_immobile_time(t_in_incl, arrival_times, filename=None, saveit=False):
 
     return t_mobile, t_immobile
 ################
-def perm_matrix(grid, circles, Kfactor):
+def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
     """Creates the permeability matrix and indexes of inclusions
         given a set of circles."""
 
@@ -1349,17 +1383,42 @@ def perm_matrix(grid, circles, Kfactor):
     xx, yy = np.meshgrid(x1, y1)
 
     i = 0
+    if Kincl is None:
+        Kincl = []
+        KvalGiven = False
+    else:
+        KvalGiven = True
+
 
     for circ in circles:
-        i = i + 1
         x0 = circ['x']
         y0 = circ['y']
         r = circ['r']
         mask = ((xx - x0)**2.0 + (yy - y0)**2.0) < r**2.0
-        kperm[mask] = Kfactor
-        incl_ind[mask] = i
+        Kfactor = np.atleast_1d(Kfactor)
 
-    return kperm, sp.csr_matrix(incl_ind)
+        if KvalGiven:
+            kval = Kincl[i]
+        else:
+            if Kdist=='uni':
+                kval = np.random.uniform(Kfactor.min(), Kfactor.max())
+            elif Kdist=='lognorm':
+                kval = np.random.normal(0., 1.)
+                #Kfactor[0] -> Geometric mean of K.
+                #Kfactor[1] -> Variance of logK.
+                kval = Kfactor[0]*np.exp(kval*np.sqrt(Kfactor[1]))
+            else: # default constant
+                kval = Kfactor[0]
+                
+            Kincl.append(kval)
+
+        kperm[mask] = kval
+
+        incl_ind[mask] = i + 1 #0 is the index for the matrix
+
+        i = i + 1
+
+    return kperm, sp.csr_matrix(incl_ind), np.array(Kincl)
 ################
 def load_perm(fname):
     """ Loads the permeability distribution in the given plk file."""
@@ -1369,6 +1428,14 @@ def load_perm(fname):
         grid = data[0]
         circles = data[1]
         Kfactor = data[2]
+        # For compatibility with previus versions.
+        try:
+            Kdist = data[3]
+            Kincl = data[4]
+
+        except:
+            Kdist = 'const'
+            Kincl = Kfactor            
 
     return grid, circles, Kfactor
 ################
@@ -1433,7 +1500,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
       shows the inclusions as white circles with black background.
     '''
     #TO DO : check that file exists.
-    grid, circles, Kfactor = load_perm(fname)
+    grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
 
     if removeBuffer:
         radius = circles[0]['r']
@@ -1483,7 +1550,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         plt.close()
 
     else:
-        kperm, _ = perm_matrix(grid, circles, Kfactor)
+        kperm, _, _ = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
         plot2D(grid, kperm, title='K', allowClose=True)
 
 ################
@@ -1594,8 +1661,10 @@ def equivalent_permeability_from_file(fname):
     """Compute the equivalent permeability of the medium.
        Data read from perm.plk file.
     """
-    grid, circles, Kfactor = load_perm(fname)
-    kperm, _ = perm_matrix(grid, circles, Kfactor)
+    grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
+    kperm, _, _ = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
+    print('')
+    print('equivalent_permeability_from_file not implemented')
 
     return equivalent_permeability(grid, kperm)
 ################
@@ -1603,7 +1672,7 @@ def inclusion_area(grid, circles,  kperm=None):
     '''Computes inclusions area.'''
 
     if kperm is None:
-        kperm, _ = perm_matrix(grid, circles, 0.1)
+        kperm, _, _ = perm_matrix(grid, circles, 0.1)
 
     dx = grid['Lx']/grid['Nx']
     # We do not take into account the displacement
@@ -1641,14 +1710,14 @@ def average_number_of_inclusions(kperm):
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
 def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
-                      calcKeff=False, directSolver=False,
+                      Kdist='const', Kincl=None, calcKeff=False, directSolver=False,
                       tol=1e-10, maxiter=2000):
 
     if fname is not None:
-        grid, circles, Kfactor = load_perm(fname)
+        grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
 
     if grid is not None or circles is not None or Kfactor is not None:
-        kperm, _ = perm_matrix(grid, circles, Kfactor)
+        kperm, _, _ = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
 
         print('Permeability data.')
         print('============ ====')
@@ -1665,6 +1734,7 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
         print('Vertical = ' + str(v_avg) + ' (' + str(v_avg_nonzero) + ')')
 
         print('Kfactor = '+ str(Kfactor))
+        print('Kdist = ' + Kdist)
 
         if calcKeff:
             keff = equivalent_permeability(grid, kperm,
@@ -1809,9 +1879,9 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True,
     '''
     permfile = folder + '/' + fname
 
-    grid, circles, Kfactor = load_perm(permfile)
+    grid, circles, Kfactor, Kdist, Kincl = load_perm(permfile)
     #radius = circles[0]['r']
-    kperm, incl_ind = perm_matrix(grid, circles, Kfactor)
+    kperm, incl_ind, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
 
     velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=incl_ind,
                           bins='auto', showfig=False, savefig=False,
