@@ -65,7 +65,8 @@ def run_simulation(*, Lx=1., Ny=50,
             print('I use the new Kfactor.')
             Kincl.fill(Kfactor)
 
-        kperm, incl_ind, Kincl  = perm_matrix(grid, circles, Kfactor)
+        kperm, incl_ind, Kincl  = perm_matrix(grid, circles, Kfactor,
+                                              Kdist=Kdist, Kincl=Kincl)
 
         if plotPerm:
             isLogNorm = 'log' in Kdist
@@ -813,7 +814,7 @@ def plot2D(grid, C, fig=None, ax=None, title=None, cmap='coolwarm',
 
     mesh = ax.pcolormesh(xx, yy, C, cmap=cmap)
 
-    #plt.axis('equal')
+    #plt.axis('equal'
     #plt.axis('tight')
     plt.axis('scaled')
 
@@ -1507,7 +1508,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
                         edgeColor='k', fill=False, axisColor='k',
                         backgroundColor='w', showTicks=True,
                         allowClose=True, showFig=True, saveFig=False,
-                        removeBuffer=False):
+                        removeBuffer=False,isLog=False):
     '''Load permeability data from plk file and plots it.
        The color options allow to generate a image that can be used to
        compute the inclusion distribution properties. For example,
@@ -1528,12 +1529,33 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
     if plotWithCircles:
         fig = plt.figure()
         ax = fig.gca()
+        i = 0
+
+        if fill: 
+            if isLog:
+                Kincl = np.log(Kincl)
+
+            import matplotlib.cm as cm
+            from matplotlib.colors import Normalize
+            norm = Normalize(Kincl.min(), Kincl.max())
+            #cmap = cm.jet
+            cmap = cm.ScalarMappable(norm=norm,  cmap=plt.get_cmap('coolwarm'))
+            cmap.set_array([])
+            
+        color = None
 
         for c in circles:
+
+            if fill:
+                color = cmap.cmap(norm(Kincl[i]))
+                i = i +1
+
             circle1 = plt.Circle((c['x'], c['y']), c['r'],
                                  edgecolor=edgeColor,
                                  facecolor=faceColor,
-                                 fill=fill)
+                                 color=color,
+                                 fill=fill)            
+
             ax.add_artist(circle1)
 
         plt.axis('scaled')
@@ -1543,15 +1565,18 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         ax.set_facecolor(backgroundColor)
 
         for axis in ['top', 'bottom', 'left', 'right']:
-            ax.spines[axis].set_linewidth(0.1)
+            ax.spines[axis].set_linewidth(0.5)
             ax.spines[axis].set_color(axisColor)
-            ax.spines[axis].set_visible(False)
+            ax.spines[axis].set_visible(True)
 
         plt.ion()
         if not showTicks:
             ax.set_xticks([])
             ax.set_yticks([])
 
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cb = plt.colorbar(cmap, cax=cax)
         if showFig:
             plt.show()
 
@@ -1568,7 +1593,8 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
 
     else:
         kperm, _, _ = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
-        plot2D(grid, kperm, title='K', allowClose=True)
+
+        plot2D(grid, kperm, title='K', plotLog=isLog, allowClose=True)
 
 ################
 def free_trapped_arrival(arrival_times, t_immobile, bins='auto',
