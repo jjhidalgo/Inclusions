@@ -37,6 +37,11 @@ def run_simulation(*, Lx=1., Ny=50,
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
+#    CalcPer: COmputespermeability according to given parameters.
+#    ReadPerm:  Reads previous permeability geometry.
+#               If the radius distribution is constant and the given Kfactor is different
+#               from the read one, the new Kfactor is used instead of the old one.
+#    ReadVel: Reads velicity from file. Flow not solved.
 
     if flowMethod == 'CalcPerm':
         print('calculo')
@@ -52,8 +57,20 @@ def run_simulation(*, Lx=1., Ny=50,
 
     if flowMethod == 'ReadPerm':
         print('Reading permeability from file...')
-        grid, circles, Kfactor = load_perm('./perm/' + filename)
+
+        grid, circles, Kfactor_old, Kdist, Kincl = load_perm('./perm/' + filename)
+
+        if np.abs(Kfactor - Kfactor_old) > 1e-5 and Kdist == 'const':
+            print('Kfactor changed and constant radius distribution.')
+            print('I use the new Kfactor.')
+            Kincl.fill(Kfactor)
+
         kperm, incl_ind, Kincl  = perm_matrix(grid, circles, Kfactor)
+
+        if plotPerm:
+            isLogNorm = 'log' in Kdist
+            plot2D(grid, kperm, title='kperm', plotLog=isLogNorm, allowClose=True)
+
         displacement = np.ceil(4.*circles[0]['r'])
         xcp = control_planes_position(grid['Lx']-displacement, displacement=displacement,
                                       control_planes=control_planes)
@@ -84,7 +101,7 @@ def run_simulation(*, Lx=1., Ny=50,
 
         else:
             dt = 0.1*Kincl.min()*grid['Lx']/grid['Nx']
-            
+
 
     transportSolved = True
 
@@ -218,7 +235,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
         pore.throat = throat
 
     elif 'rnd' in pack:
-            
+
         pore = rp.RndPore2D(lx=Lx, ly=Ly,
                             rmin=radius.min(), rmax=radius.max(),
                             target_porosity=1.-target_incl_area,
@@ -260,7 +277,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
 
     # control planes position
     # Lx has not the displacement length.
-    control_planes = control_planes_position(Lx, 
+    control_planes = control_planes_position(Lx,
                                              displacement=displacement,
                                              control_planes=control_planes)
 
@@ -469,16 +486,16 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
 
     if plotit and CC is None:
         CC = np.ones((Ny, Nx))
-    
+
     if plotit:
         figt, axt, cbt = plot2D(grid, CC)
-        
+
     t = 0.
 
     xp = np.zeros(Npart)
     yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjSize*Ly)/Npart)
     yp = yp + 0.5 - InjSize/2.
-    
+
     #qq
     #rad = 0.25231325
     #alpha = np.arange(np.pi/Npart/2.0, np.pi, np.pi/Npart)
@@ -1070,7 +1087,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False, saveit=False):
         print('Periodic boundary conditions in stream function not implemented.')
         print('No flow conditions used.')
         print('')
-        
+
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
     dx = Lx/(Nx-1)
@@ -1128,7 +1145,7 @@ def stream_function(grid, kperm, isPeriodic=False, plotPsi=False, saveit=False):
         if filename is not None:
             fname = filename + '-' + fname
         np.save(fname, psi)
-        
+
     return psi
 ################
 def plot_stream(psi, grid, kperm=None, circles=None, N=50, cmap='coolwarm'):
@@ -1409,7 +1426,7 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
                 kval = Kfactor[0]*np.exp(kval*np.sqrt(Kfactor[1]))
             else: # default constant
                 kval = Kfactor[0]
-                
+
             Kincl.append(kval)
 
         kperm[mask] = kval
@@ -1435,9 +1452,9 @@ def load_perm(fname):
 
         except:
             Kdist = 'const'
-            Kincl = Kfactor            
+            Kincl = np.array(Kfactor)
 
-    return grid, circles, Kfactor
+    return grid, circles, Kfactor, Kdist, Kincl
 ################
 def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
@@ -1507,7 +1524,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         displacement = np.ceil(4.*radius)
         grid = setup_grid(grid['Lx'] - displacement, grid['Ny'])
         circles[:]['x'] = circles[:]['x'] - 0.5*displacement
-        
+
     if plotWithCircles:
         fig = plt.figure()
         ax = fig.gca()
@@ -1929,7 +1946,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
         arrival_times_cp = np.zeros((Npart, num_control_planes))
         xpmax_cp = np.zeros(num_control_planes)
         xpmin_cp = np.zeros(num_control_planes)
-        
+
     arrival_times = np.zeros(Npart)
 
     #number of inclusions
@@ -1957,7 +1974,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
     t_in_incl_cp = []
     for i in range(num_incl):
         t_in_incl.append({})
-        
+
     for icp in range(num_control_planes):
         t_in_incl_cp.append([])
         for i in range(num_incl):
@@ -1967,7 +1984,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
     xp = np.zeros(Npart)
     yp = np.arange((InjSize*Ly)/Npart/2.0, InjSize*Ly, (InjSize*Ly)/Npart)
     yp = yp + 0.5 - InjSize/2.
-    
+
     isIn = np.where(xp < Lx)[0]
 
     # initial cells indexes.
@@ -2086,11 +2103,11 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
                     #      + ' x = ' + str(xcp[icp]))
                     #if xpmax_cp[icp] > xcp[icp]:
                     #    ipdb.set_trace()
-                          
+
                     arrival_times_cp[vorcp,icp] = arrival_times[vorcp]
                     t_in_incl_cp[icp] = update_time_in_incl(t_in_incl_cp[icp],incl_ind,
                                                             vorcp, indx[vorcp], indy[vorcp],
-                                                            arrival_times_cp[:,icp]) 
+                                                            arrival_times_cp[:,icp])
                 if vorcp.size < 1 and not cp_writen[icp]:
                     filename = 'cp' + str(icp)
 
@@ -2209,7 +2226,7 @@ def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
 def compute_btc(arrival_times, bins='auto', saveit=False,
                  logx=False, logy=False, showfig=False,
                  savefig=False, filename=None):
-    ''' Breakthrough curve from arrival times.'''  
+    ''' Breakthrough curve from arrival times.'''
 
     vals, edges = np.histogram(arrival_times, bins=bins, density=True)
     btc_time = (edges[:-1] + edges[1:])/2.
@@ -2230,7 +2247,7 @@ def compute_btc(arrival_times, bins='auto', saveit=False,
     return btc_time, vals
 ##################
 def control_planes_position(Lx, displacement=0.0, control_planes=None):
-    ''' Position is calculated from the end of the left buffer.'''  
+    ''' Position is calculated from the end of the left buffer.'''
 
     if control_planes is not None:
 
