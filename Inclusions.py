@@ -311,7 +311,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
 
     if calcKinfo or calcKeff:
         permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
-                          Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff)
+                          Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff, fname=filename)
 
     return kperm, incl_ind, grid, control_planes, Kincl
 
@@ -1075,7 +1075,8 @@ def postprocess_all(savedata=True, savefig=False,
                                   bins='auto', dofullpostp=dofullpostp)
     return True
 ################
-def stream_function(grid, kperm, isPeriodic=False, plotPsi=False, saveit=False):
+def stream_function(grid, kperm, isPeriodic=False, plotPsi=False,
+                    saveit=False, filename=None):
     '''Compute the stream function.
     isPeriodic = False:
       The stream function is prescribed at the boundaries so that
@@ -1400,43 +1401,43 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
     y1 = np.arange(dy/2.0, Ly, dy)
     xx, yy = np.meshgrid(x1, y1)
 
-    i = 0
-    if Kincl is None:
-        Kincl = []
-        KvalGiven = False
-    else:
-        KvalGiven = True
+    n_incl = circles.shape[0]
 
+    if  Kincl is None:
+
+        if Kdist=='uni':
+            Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(),size=n_incl)
+        elif Kdist=='lognorm':
+            Kincl = np.random.normal(0., 1.,size=n_incl)
+            #Kfactor[0] -> Geometric mean of K.
+            #Kfactor[1] -> Variance of logK.
+            Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
+        elif Kdist=='gamma':
+            #f(x) = (1/gamma(k)b^a) x^(a-1) exp(-x/b)
+            # a -> shape.
+            # b -> scale.
+            #mean = b*a;  variance=a*b^2
+            #Kfactor[0] -> mean
+            #Kfactor[1] -> variance.
+            a = (Kfactor[0]**2)/Kfactor[1]
+            b = Kfactor[1]/Kfactor[0]
+            Kincl = np.random.gamma(a, scale=b, size=n_incl)
+            Kincl[Kincl<1e-5] = 1e-5
+        else: # default constant
+            Kincl = np.full(Kincl.shape, Kfactor[0])
+
+    i = 0
 
     for circ in circles:
         x0 = circ['x']
         y0 = circ['y']
         r = circ['r']
         mask = ((xx - x0)**2.0 + (yy - y0)**2.0) < r**2.0
-        Kfactor = np.atleast_1d(Kfactor)
-
-        if KvalGiven:
-            kval = Kincl[i]
-        else:
-            if Kdist=='uni':
-                kval = np.random.uniform(Kfactor.min(), Kfactor.max())
-            elif Kdist=='lognorm':
-                kval = np.random.normal(0., 1.)
-                #Kfactor[0] -> Geometric mean of K.
-                #Kfactor[1] -> Variance of logK.
-                kval = Kfactor[0]*np.exp(kval*np.sqrt(Kfactor[1]))
-            else: # default constant
-                kval = Kfactor[0]
-
-            Kincl.append(kval)
-
-        kperm[mask] = kval
-
+        kperm[mask] = Kincl[i]
         incl_ind[mask] = i + 1 #0 is the index for the matrix
-
         i = i + 1
 
-    return kperm, sp.csr_matrix(incl_ind), np.array(Kincl)
+    return kperm, sp.csr_matrix(incl_ind), Kincl
 ################
 def load_perm(fname):
     """ Loads the permeability distribution in the given plk file."""
@@ -1665,8 +1666,8 @@ def inclusion_per_particle(t_in_incl, Npart, saveit=False, showfig=False,
                   figname=fname + '-no-zero')
 
     print("Trapping Events.")
-    print("Mean: " + str(np.mean(incl_per_part)))
-    print("Variance: " + str(np.var(incl_per_part)))
+    print("Mean: ", np.mean(incl_per_part), "Variance: ", np.var(incl_per_part))
+
 
     return incl_per_part
 ################
@@ -1753,8 +1754,8 @@ def average_number_of_inclusions(kperm):
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
 def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
-                      Kdist='const', Kincl=None, calcKeff=False, directSolver=False,
-                      tol=1e-10, maxiter=2000):
+                      Kdist='const', Kincl=None, calcKeff=False,
+                      directSolver=False, tol=1e-10, maxiter=2000):
 
     if fname is not None:
         grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
@@ -1778,6 +1779,12 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
 
         print('Kfactor = '+ str(Kfactor))
         print('Kdist = ' + Kdist)
+
+        figname = fname + '-perm-h'
+        plot_hist(Kincl, title='', bins='auto', density=True,
+              showfig=False, savefig=False, savedata=True,
+              figname=figname)
+        print('Inclusions permeability histogram computed.')
 
         if calcKeff:
             keff = equivalent_permeability(grid, kperm,
