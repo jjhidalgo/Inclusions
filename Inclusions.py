@@ -1412,19 +1412,17 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
             #Kfactor[0] -> Geometric mean of K.
             #Kfactor[1] -> Variance of logK.
             Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
-        elif Kdist=='gamma':
-            #f(x) = (1/gamma(k)b^a) x^(a-1) exp(-x/b)
+        elif Kdist=='tgamma':
             # a -> shape.
             # b -> scale.
             #mean = b*a;  variance=a*b^2
-            #Kfactor[0] -> mean
-            #Kfactor[1] -> variance.
-            a = (Kfactor[0]**2)/Kfactor[1]
-            b = Kfactor[1]/Kfactor[0]
-            Kincl = np.random.gamma(a, scale=b, size=n_incl)
-            Kincl[Kincl<1e-5] = 1e-5
+            #Kfactor[0] -> shape
+            #Kfactor[1] -> scale as in wikipedia. Scipy calss scale to the inverse.
+            #Kfactor[2] -> Left truncation value.
+            #Kfactor[3] -> Right truncation value.
+            Kincl = trunc_gamma(Kfactor[0], Kfactor[1], Kfactor[2], Kfactor[3], size=n_incl)
         else: # default constant
-            Kincl = np.full(Kincl.shape, Kfactor[0])
+            Kincl = np.full((n_incl,), Kfactor[0])
 
     i = 0
 
@@ -2307,4 +2305,32 @@ def control_planes_position(Lx, displacement=0.0, control_planes=None):
             control_planes = None
 
     return control_planes
+##################
+def trunc_gamma(shape, theta, a1, a2, size=1):
+    ''' Generates random values from a truncated gamma distribution.
+          a1 = value for left truncation
+          a2 = value for right truncation
+
+        Translated to python from
+        https://github.com/ericyewang/GEODE/blob/master/matlab%20code%201.2/gamrndtruncated.m#L10
+     '''
+
+    from scipy.stats import gamma
+    from scipy.stats import invgamma
+
+    epsilon = 1e-8
+
+    cdf1 = gamma.cdf(a1, shape,scale=1./theta)
+    cdf2 = gamma.cdf(a2, shape,scale=1./theta)
+
+    cond1 = (cdf1 > 1. - epsilon) and (cdf2 > 1. - epsilon)
+    cond2 = (cdf1 < epsilon) and (cdf2 < epsilon)
+
+    vals =np.full((size,), a1*cond1 + a2*cond2)
+
+    if (not cond1) and (not cond2):
+        vals = invgamma.ppf(cdf1 + np.random.uniform(0., 1., size)*(cdf2 - cdf1),
+                        shape, scale=1./theta)
+
+    return vals
 ##################
