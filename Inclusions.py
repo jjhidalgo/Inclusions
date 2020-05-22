@@ -43,6 +43,8 @@ def run_simulation(*, Lx=1., Ny=50,
 #               from the read one, the new Kfactor is used instead of the old one.
 #    ReadVel: Reads velicity from file. Flow not solved.
 
+    Kfactor = np.atleast_1d(Kfactor)
+
     if flowMethod == 'CalcPerm':
         print('calculo')
         grid = setup_grid(Lx, Ny)
@@ -53,6 +55,7 @@ def run_simulation(*, Lx=1., Ny=50,
                                                   plotit=plotPerm, saveit=True,
                                                   overlapTol=overlapTol,
                                                   calcKinfo=True, calcKeff=False,
+                                                  calcKhist = False,
                                                   control_planes=control_planes)
 
     if flowMethod == 'ReadPerm':
@@ -76,7 +79,8 @@ def run_simulation(*, Lx=1., Ny=50,
         xcp = control_planes_position(grid['Lx']-displacement, displacement=displacement,
                                       control_planes=control_planes)
 
-        permeability_data(grid=grid, circles=circles, Kfactor=Kfactor, calcKeff=False)
+        permeability_data(grid=grid, circles=circles, Kfactor=Kfactor,
+                          calcKeff=False, calcKhist=False)
 
 
     if flowMethod == 'ReadVel':
@@ -188,7 +192,7 @@ def unpack_grid(grid):
 def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
                  target_incl_area=0.5, radius=None, isPeriodicK=False,
                  filename=None, plotit=False, saveit=True, overlapTol=None,
-                 calcKinfo=True, calcKeff=False, control_planes=None):
+                 calcKinfo=True, calcKeff=False, calcKhist=False, control_planes=None):
     """Computes permeability parttern inside a 1. by Lx rectangle.
        The area covered by the inclusions is 1/2 of the rectanle.
        If the arrangement os random, the radius is reduced by 10%
@@ -309,9 +313,10 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
                         ff, pickle.HIGHEST_PROTOCOL)
         #pore.write_mesh(fname='g', meshtype='stl')
 
-    if calcKinfo or calcKeff:
+    if calcKinfo or calcKeff or calcKhist:
         permeability_data(grid=grid, circles=pore.circles, Kfactor=Kfactor,
-                          Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff, fname=filename)
+                          Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff,
+                          calcKhist=calcKhist, fname=filename)
 
     return kperm, incl_ind, grid, control_planes, Kincl
 
@@ -1444,7 +1449,7 @@ def load_perm(fname):
         data = pickle.load(ff)
         grid = data[0]
         circles = data[1]
-        Kfactor = data[2]
+        Kfactor = np.array(data[2])
         # For compatibility with previus versions.
         try:
             Kdist = data[3]
@@ -1452,7 +1457,8 @@ def load_perm(fname):
 
         except:
             Kdist = 'const'
-            Kincl = np.array(Kfactor)
+            Kfactor = np.atleast_1d(Kfactor)
+            Kincl = np.full(circles.shape[0], Kfactor[0]) 
 
     return grid, circles, Kfactor, Kdist, Kincl
 ################
@@ -1530,7 +1536,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
         ax = fig.gca()
         i = 0
 
-        if fill: 
+        if fill:
             if isLog:
                 Kincl = np.log(Kincl)
 
@@ -1540,7 +1546,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
             #cmap = cm.jet
             cmap = cm.ScalarMappable(norm=norm,  cmap=plt.get_cmap('coolwarm'))
             cmap.set_array([])
-            
+
         color = None
 
         for c in circles:
@@ -1553,7 +1559,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
                                  edgecolor=edgeColor,
                                  facecolor=faceColor,
                                  color=color,
-                                 fill=fill)            
+                                 fill=fill)
 
             ax.add_artist(circle1)
 
@@ -1752,7 +1758,7 @@ def average_number_of_inclusions(kperm):
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
 def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
-                      Kdist='const', Kincl=None, calcKeff=False,
+                      Kdist='const', Kincl=None, calcKeff=False, calcKhist=False,
                       directSolver=False, tol=1e-10, maxiter=2000):
 
     if fname is not None:
@@ -1778,11 +1784,12 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
         print('Kfactor = '+ str(Kfactor))
         print('Kdist = ' + Kdist)
 
-        figname = fname + '-perm-h'
-        plot_hist(Kincl, title='', bins='auto', density=True,
-              showfig=False, savefig=False, savedata=True,
-              figname=figname)
-        print('Inclusions permeability histogram computed.')
+        if calcKhist:
+            figname = fname + '-perm-h'
+            plot_hist(Kincl, title='', bins='auto', density=True,
+                      showfig=False, savefig=False, savedata=True,
+                      figname=figname)
+            print('Inclusions permeability histogram computed.')
 
         if calcKeff:
             keff = equivalent_permeability(grid, kperm,
