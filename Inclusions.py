@@ -1421,8 +1421,8 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
             # a -> shape.
             # b -> scale.
             #mean = b*a;  variance=a*b^2
-            #Kfactor[0] -> shape
-            #Kfactor[1] -> scale as in wikipedia. Scipy calss scale to the inverse.
+            #Kfactor[0] -> shape as in wikipedia (k)
+            #Kfactor[1] -> scale as in wikipedia (theta). Scipy calls scale to the inverse.
             #Kfactor[2] -> Left truncation value.
             #Kfactor[3] -> Right truncation value.
             Kincl = trunc_gamma(Kfactor[0], Kfactor[1], Kfactor[2], Kfactor[3], size=n_incl)
@@ -1513,7 +1513,7 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
                         edgeColor='k', fill=False, axisColor='k',
                         backgroundColor='w', showTicks=True,
                         allowClose=True, showFig=True, saveFig=False,
-                        removeBuffer=False,isLog=False):
+                        removeBuffer=False,isLog=False, cmap='coolwarm'):
     '''Load permeability data from plk file and plots it.
        The color options allow to generate a image that can be used to
        compute the inclusion distribution properties. For example,
@@ -1544,15 +1544,15 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
             from matplotlib.colors import Normalize
             norm = Normalize(Kincl.min(), Kincl.max())
             #cmap = cm.jet
-            cmap = cm.ScalarMappable(norm=norm,  cmap=plt.get_cmap('coolwarm'))
-            cmap.set_array([])
+            cmap_fill = cm.ScalarMappable(norm=norm,  cmap=plt.get_cmap(cmap))
+            cmap_fill.set_array([])
 
         color = None
 
         for c in circles:
 
             if fill:
-                color = cmap.cmap(norm(Kincl[i]))
+                color = cmap_fill.cmap(norm(Kincl[i]))
                 i = i +1
 
             circle1 = plt.Circle((c['x'], c['y']), c['r'],
@@ -1579,9 +1579,11 @@ def plot_perm_from_file(fname, plotWithCircles=True, faceColor='g',
             ax.set_xticks([])
             ax.set_yticks([])
 
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        cb = plt.colorbar(cmap, cax=cax)
+        if fill:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            cb = plt.colorbar(cmap_fill, cax=cax)
+
         if showFig:
             plt.show()
 
@@ -2336,7 +2338,7 @@ def trunc_gamma(shape, theta, a1, a2, size=1):
     vals =np.full((size,), a1*cond1 + a2*cond2)
 
     if (not cond1) and (not cond2):
-        vals = invgamma.ppf(cdf1 + np.random.uniform(0., 1., size)*(cdf2 - cdf1),
+        vals = gamma.ppf(cdf1 + np.random.uniform(0., 1., size)*(cdf2 - cdf1),
                         shape, scale=1./theta)
 
     return vals
