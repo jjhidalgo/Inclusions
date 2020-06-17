@@ -1785,7 +1785,8 @@ def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
 
         print('Kfactor = '+ str(Kfactor))
         print('Kdist = ' + Kdist)
-
+        print('K mean and variance: ' + str(Kincl.mean()) + ' ' + str(Kincl.var()))
+        print('logK mean and variance: ' + str(np.log(Kincl).mean()) + ' ' + str(np.log(Kincl).var()))
         if calcKhist:
             figname = fname + '-perm-h'
             plot_hist(Kincl, title='', bins='auto', density=True,
