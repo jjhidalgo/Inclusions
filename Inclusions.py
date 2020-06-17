@@ -37,10 +37,9 @@ def run_simulation(*, Lx=1., Ny=50,
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
-#    CalcPer: COmputespermeability according to given parameters.
+#    CalcPer: Computespermeability according to given parameters.
 #    ReadPerm:  Reads previous permeability geometry.
-#               If the radius distribution is constant and the given Kfactor is different
-#               from the read one, the new Kfactor is used instead of the old one.
+#               Given Kfactor and Kdist are used instead of the old ones.
 #    ReadVel: Reads velicity from file. Flow not solved.
 
     Kfactor = np.atleast_1d(Kfactor)
@@ -61,15 +60,10 @@ def run_simulation(*, Lx=1., Ny=50,
     if flowMethod == 'ReadPerm':
         print('Reading permeability from file...')
 
-        grid, circles, Kfactor_old, Kdist, Kincl = load_perm('./perm/' + filename)
+        grid, circles, _, _, _ = load_perm('./perm/' + filename)
 
-        if np.abs(Kfactor - Kfactor_old) > 1e-5 and Kdist == 'const':
-            print('Kfactor changed and constant radius distribution.')
-            print('I use the new Kfactor.')
-            Kincl.fill(Kfactor)
-
-        kperm, incl_ind, Kincl  = perm_matrix(grid, circles, Kfactor,
-                                              Kdist=Kdist, Kincl=Kincl)
+        print('I use the new Kfactor and Kdist.')
+        kperm, incl_ind, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist)
 
         if plotPerm:
             isLogNorm = 'log' in Kdist
@@ -79,9 +73,9 @@ def run_simulation(*, Lx=1., Ny=50,
         xcp = control_planes_position(grid['Lx']-displacement, displacement=displacement,
                                       control_planes=control_planes)
 
-        permeability_data(grid=grid, circles=circles, Kfactor=Kfactor,
-                          calcKeff=False, calcKhist=False)
-
+        permeability_data(kperm=kperm, grid=grid, circles=circles, Kfactor=Kfactor,
+                          fname=filename, Kdist=Kdist, Kincl=Kincl,
+                          calcKeff=False, calcKhist=True)
 
     if flowMethod == 'ReadVel':
         ux = np.load('./veldata/' + filename + '-ux.npy')
@@ -1458,7 +1452,7 @@ def load_perm(fname):
         except:
             Kdist = 'const'
             Kfactor = np.atleast_1d(Kfactor)
-            Kincl = np.full(circles.shape[0], Kfactor[0]) 
+            Kincl = np.full(circles.shape[0], Kfactor[0])
 
     return grid, circles, Kfactor, Kdist, Kincl
 ################
@@ -1759,18 +1753,36 @@ def average_number_of_inclusions(kperm):
 
     return h_avg, v_avg, h_avg_nonzero, v_avg_nonzero
 ################
-def permeability_data(grid=None, circles=None, Kfactor=None, fname=None,
+def permeability_data_from_file(fname=None, calcKeff=False, calcKhist=False,
+                      directSolver=False, tol=1e-10, maxiter=2000):
+    ''' Loads permeability and  computes statistics.
+    '''
+
+    grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
+    kperm, _, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
+    permeability_data(grid=grid, circles=circles, Kfactor=Kfactor, fname=fname,
+                      Kdist=Kdist, Kincl=Kincl, calcKeff=calcKeff, calcKhist=calcKhist,
+                      directSolver=directSolver, tol=tol, maxiter=maxiter)
+
+    return
+################
+def permeability_data(kperm=None, grid=None, circles=None, Kfactor=None, fname=None,
                       Kdist='const', Kincl=None, calcKeff=False, calcKhist=False,
                       directSolver=False, tol=1e-10, maxiter=2000):
 
-    if fname is not None:
-        grid, circles, Kfactor, Kdist, Kincl = load_perm(fname)
+    print('Permeability data.')
+    print('============ ====')
 
-    if grid is not None or circles is not None or Kfactor is not None:
-        kperm, _, _ = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
+    if kperm is None:
+        print('I need to compute the permeability matrix.')
 
-        print('Permeability data.')
-        print('============ ====')
+        if not None in (grid, circles, Kfactor, Kdist):
+            kperm, _, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
+        else:
+            print('Not enough data to compute the permeability matrix.')
+
+    if kperm is not None:
+
         print('Lx = '+ str(grid['Lx']))
         print('Ny = '+ str(grid['Ny']))
         print('radius = '+ str(circles[0]['r']))
