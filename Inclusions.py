@@ -1405,7 +1405,7 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
     if  Kincl is None:
 
         if Kdist=='uni':
-            Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(),size=n_incl)
+            Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(), size=n_incl)
         elif Kdist=='lognorm':
             Kincl = np.random.normal(0., 1.,size=n_incl)
             #Kfactor[0] -> Geometric mean of K.
@@ -1420,6 +1420,13 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
             #Kfactor[2] -> Left truncation value.
             #Kfactor[3] -> Right truncation value.
             Kincl = trunc_gamma(Kfactor[0], Kfactor[1], Kfactor[2], Kfactor[3], size=n_incl)
+        elif Kdist=='gamma':
+            # a -> shape.
+            # b -> scale.
+            #mean = b*a;  variance=a*b^2
+            #Kfactor[0] -> shape as in wikipedia (k)
+            #Kfactor[1] -> scale as in wikipedia (theta).
+            Kincl =  np.random.gamma(Kfactor[0], scale=Kfactor[1], size=n_incl)
         else: # default constant
             Kincl = np.full((n_incl,), Kfactor[0])
 
@@ -1776,7 +1783,7 @@ def permeability_data(kperm=None, grid=None, circles=None, Kfactor=None, fname=N
     if kperm is None:
         print('I need to compute the permeability matrix.')
 
-        if not None in (grid, circles, Kfactor, Kdist):
+        if grid is not None and circles is not None and Kfactor is not None and Kdist is not None:
             kperm, _, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
         else:
             print('Not enough data to compute the permeability matrix.')
