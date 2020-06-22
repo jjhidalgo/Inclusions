@@ -1407,11 +1407,10 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
         if Kdist=='uni':
             Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(), size=n_incl)
         elif Kdist=='lognorm':
-            #Kincl = np.random.normal(0., 1.,size=n_incl)
             #Kfactor[0] -> Geometric mean of K.
             #Kfactor[1] -> Variance of logK.
-            #Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
-            Kincl = np.random.normal(Kfactor[0], Kfactor[1],size=n_incl)
+            Kincl = np.random.normal(0., 1.,size=n_incl)
+            Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
         elif Kdist=='tgamma':
             # a -> shape.
             # b -> scale.
