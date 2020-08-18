@@ -60,11 +60,17 @@ def run_simulation(*, Lx=1., Ny=50,
     if flowMethod == 'ReadPerm':
         print('Reading permeability from file...')
 
-        grid, circles, _, _, _ = load_perm('./perm/' + filename)
+        grid, circles, Kfactor_old, Kdist_old, Kincl = load_perm('./perm/' + filename)
 
-        print('I use the new Kfactor and Kdist.')
-        kperm, incl_ind, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist)
+        if Kdist_old == Kdist and np.array_equal(Kdist_old, Kdist):
+            print('Permeability did not change.')
+        else:
+            print('I use the new Kfactor and Kdist.')
+            Kincl = None
 
+        kperm, incl_ind, Kincl = perm_matrix(grid, circles, Kfactor, Kdist=Kdist, Kincl=Kincl)
+        save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=filename)
+        
         if plotPerm:
             isLogNorm = 'log' in Kdist
             plot2D(grid, kperm, title='kperm', plotLog=isLogNorm, allowClose=True)
@@ -297,14 +303,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
         plot2D(grid, kperm, title='kperm', plotLog=isLogNorm, allowClose=True)
 
     if saveit:
-        if filename is None:
-            fname = 'perm.plk'
-        else:
-            fname = filename + '-perm.plk'
-
-        with open(fname, 'wb') as ff:
-            pickle.dump([grid, pore.circles, Kfactor, Kdist, Kincl],
-                        ff, pickle.HIGHEST_PROTOCOL)
+        save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=filename)
         #pore.write_mesh(fname='g', meshtype='stl')
 
     if calcKinfo or calcKeff or calcKhist:
@@ -1429,7 +1428,8 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
             Kincl =  np.random.gamma(Kfactor[0], scale=Kfactor[1], size=n_incl)
         else: # default constant
             Kincl = np.full((n_incl,), Kfactor[0])
-
+    else:
+        print('Using given Kincl.')
     i = 0
 
     for circ in circles:
@@ -2362,4 +2362,16 @@ def trunc_gamma(shape, theta, a1, a2, size=1):
                         shape, scale=1./theta)
 
     return vals
+##################
+def save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=None):
+    ''' Save permeability data'''
+    
+    if filename is None:
+        fname = 'perm.plk'
+    else:
+        fname = filename + '-perm.plk'
+
+    with open(fname, 'wb') as ff:
+        pickle.dump([grid, circles, Kfactor, Kdist, Kincl],
+                    ff, pickle.HIGHEST_PROTOCOL)
 ##################
