@@ -874,7 +874,7 @@ def load_data(filename):
             Npart = data[0]
             t_in_incl = data[1]
             arrival_times = data[2]
-            return  Npart, t_in_incl, arrival_timesw
+            return  Npart, t_in_incl, arrival_times
 
 ################
 def time_per_inclusion(t_in_incl, Npart, bins='auto', saveit=False,
