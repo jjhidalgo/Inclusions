@@ -153,7 +153,10 @@ def run_simulation(*, Lx=1., Ny=50,
         velocity_distribution(grid, kperm, ux=ux, uy=uy, incl_ind=incl_ind,
                           bins='auto', showfig=False, savefig=False,
                               savedata=True, fname=filename)
-
+        if transportSolved:
+            particle_velocity_distribution(t_in_incl, incl_ind, ux=ux, uy=uy, bins='auto',
+                                           showfig=False, savefig=False,
+                                           savedata=False, fname=filename)
     if doPost and transportSolved:
 
         postprocess(Npart, t_in_incl, arrival_times, fname=filename,
@@ -303,7 +306,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
         plot2D(grid, kperm, title='kperm', plotLog=isLogNorm, allowClose=True)
 
     if saveit:
-        save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=filename)
+        save_perm(grid, pore.circles, Kfactor, Kdist, Kincl, filename=filename)
         #pore.write_mesh(fname='g', meshtype='stl')
 
     if calcKinfo or calcKeff or calcKhist:
@@ -871,7 +874,7 @@ def load_data(filename):
             Npart = data[0]
             t_in_incl = data[1]
             arrival_times = data[2]
-            return  Npart, t_in_incl, arrival_times
+            return  Npart, t_in_incl, arrival_timesw
 
 ################
 def time_per_inclusion(t_in_incl, Npart, bins='auto', saveit=False,
@@ -1290,7 +1293,7 @@ def fd_mats(Nx, Ny, dx, dy, isPeriodic=False):
 def update_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
     """ Given the particles inside the domain (isIn), the indexes of
         the cells where the particles are (indx, indy), the indexes
-        of the cells inside incluisions (incl_ind), and the current time
+        of the cells inside inclusions (incl_ind), and the current time
         (per particle if integrating along streamlines) (time), updates
         the time the particle entered and/or exited each inclusion.
     """
@@ -1878,26 +1881,30 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
     vel = np.sqrt(uxm*uxm + uym*uym)
 
-    figname = fname + '-vel-incl'
+    incl_ind = incl_ind.todense().astype(int)
 
-    plot_hist(vel[kperm < 1.0], title='', bins=bins, density=True,
+    figname = fname + '-vel-incl'
+    #kperm < 1.0
+    plot_hist(vel[incl_ind > 0], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
     figname = fname + '-vel-mat'
 
-    plot_hist(vel[kperm > 0.99], title='', bins=bins, density=True,
+    plot_hist(vel[incl_ind == 0], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
 
 
     print('Velocity in matrix')
-    print('mean ux: ' +  str(uxm[kperm > 0.99].mean()))
-    print('mean uy: ' +  str(uym[kperm > 0.99].mean()))
-    print('mean v: ' +  str(vel[kperm > 0.99].mean()))
+    print('mean ux: ' +  str(uxm[incl_ind == 0].mean()))
+    print('mean uy: ' +  str(uym[incl_ind == 0].mean()))
+    print('mean v: ' +  str(vel[incl_ind == 0].mean()))
 
     figname = fname + '-vel-mat-no-buffer'
-    mask = (kperm > 0.99) & (xx > xmin) & (xx < xmax)
+    #mask = (kperm > 0.99) & (xx > xmin) & (xx < xmax)
+    mask = (incl_ind == 0) & (xx > xmin) & (xx < xmax)
+
     plot_hist(vel[mask], title='', bins=bins, density=True,
               showfig=showfig, savefig=savefig, savedata=savedata,
               figname=figname, figformat='pdf')
@@ -1919,9 +1926,6 @@ def velocity_distribution(grid, kperm, ux=None, uy=None, incl_ind=None,
 
         #mean(ux), var(ux), mean(uy), var(uy), mean(v), var(v)
         stats = np.zeros((num_incl, 6))
-
-
-        incl_ind = incl_ind.todense().astype(int)
 
         for i in range(num_incl):
 
@@ -2375,3 +2379,63 @@ def save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=None):
         pickle.dump([grid, circles, Kfactor, Kdist, Kincl],
                     ff, pickle.HIGHEST_PROTOCOL)
 ##################
+def chek_overlap(circles):
+
+    r2 = 2.*circles[0]['r']
+    i = 0
+    print('r2: ', r2)
+    for c1 in circles:
+        x1 = c1['x']
+        y1 = c1['y']
+        j = 0
+        for c2 in circles:
+            x2 = c2['x']
+            y2 = c2['y']
+            dx2 = (x1 - c2['x'])**2
+            dy2 = (y1 - c2['y'])**2
+            distance = np.sqrt(dx2 + dy2)
+            j = j + 1
+            if distance > r2:
+                
+                i = i + 1
+    print('Total overlaps: ', i)
+    return
+
+##################    
+def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='auto', showfig=False, savefig=False,
+                          savedata=False, fname=''):
+    '''Given the dictionary the dictionary with the time each particle spent in each inclusion 
+       and the mean velocity in the inclusion, returns the inclusions velocity distribution seen
+       by the particles.
+
+    # t_in_incl  contains nincl dictionaries. Each dictionary contains the particle and the time spent.
+    '''
+
+    if ux is None or uy is None:
+        ux, uy = flow(grid, 1./kperm, 'flow', isPeriodic=True, plotHead=False,
+                      directSolver=directSolver, tol=tol, maxiter=maxiter)
+
+    #uxm = (ux[:, 0:-1] + ux[:, 1:])/2.
+    #uym = (uy[0:-1, :] + uy[1:, :])/2.
+
+    vel = np.sqrt(((ux[:, 0:-1] + ux[:, 1:])/2.)**2 + ((uy[0:-1, :] + uy[1:, :])/2.)**2)
+
+    nincl = len(t_in_incl)
+
+    vmean = np.empty(nincl)
+
+    incl_ind = incl_ind.todense().astype(int)
+   
+    for i in range(nincl):
+        vmean[i] = vel[incl_ind == (i + 1)].mean()
+    
+    vels = []
+    for incl in range(nincl):
+        vels.extend(vmean[incl] for i in range(len(t_in_incl[incl])))
+
+    figname = fname + '-vel-part'
+    plot_hist(np.array(vels), title='', bins=bins,
+              showfig=True, savefig=savefig,
+              savedata=True, figname=figname)
+
+    return True
