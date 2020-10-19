@@ -2402,8 +2402,8 @@ def chek_overlap(circles):
     return
 
 ##################    
-def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='auto', showfig=False, savefig=False,
-                          savedata=False, fname=''):
+def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='auto',
+                                   showfig=False, savefig=False, savedata=True, fname=''):
     '''Given the dictionary the dictionary with the time each particle spent in each inclusion 
        and the mean velocity in the inclusion, returns the inclusions velocity distribution seen
        by the particles.
@@ -2435,7 +2435,7 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
 
     figname = fname + '-vel-part'
     plot_hist(np.array(vels), title='', bins=bins,
-              showfig=True, savefig=savefig,
-              savedata=True, figname=figname)
+              showfig=showfig, savefig=savefig,
+              savedata=savedata, figname=figname)
 
     return True
