@@ -2434,7 +2434,7 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
         vels.extend(vmean[incl] for i in range(len(t_in_incl[incl])))
 
 
-    np.save(fname + '-vel-part.npy', vels) 
+    np.savez_compressed(fname + '-vel-part.npz', vels=vels)
 
     figname = fname + '-vel-part'
     plot_hist(np.array(vels), title='', bins=bins,
