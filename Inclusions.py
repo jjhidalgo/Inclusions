@@ -156,7 +156,7 @@ def run_simulation(*, Lx=1., Ny=50,
         if transportSolved:
             particle_velocity_distribution(t_in_incl, incl_ind, ux=ux, uy=uy, bins='auto',
                                            showfig=False, savefig=False,
-                                           savedata=False, fname=filename)
+                                           savedata=True, fname=filename)
     if doPost and transportSolved:
 
         postprocess(Npart, t_in_incl, arrival_times, fname=filename,
