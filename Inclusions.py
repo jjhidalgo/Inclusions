@@ -2459,12 +2459,8 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
     return True
 
 ##################
-def reactive_btcs(arrival_times, t_in_incl, react_rate,
-                 bins='auto', saveit=False,
-                 logx=False, logy=False, showfig=False,
-                 savefig=False, filename=None):
-    ''' Breakthrough curve from arrival times with reactions'''
-
+def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
+    ''' Arrival times with reactions'''
 
     Npart = arrival_times.shape[0]
     # get in/out time of each particle per inclusion
@@ -2494,17 +2490,27 @@ def reactive_btcs(arrival_times, t_in_incl, react_rate,
             reacted.append(particle)
 
     # We remove arrival times of particles that reacted
-    arrival_times = np.delete(arrival_times, reacted)
+    
+    return np.delete(arrival_times, reacted)
+
+##################
+def reactive_btcs(arrival_times, Npart,
+                 bins='auto', saveit=False,
+                 logx=False, logy=False, showfig=False,
+                 savefig=False, filename=None):
+    ''' Breakthrough curve from arrival times with reactions'''
 
     if saveit:
         filename = filename + '-react'
 
+    r_arrival_times = reactive_arrival_times(arrival_times, t_in_incl, react_rate)
+    
     #Compute curves.
-    cbtc_time, cbtc = compute_cbtc(arrival_times, Npart=Npart,
+    cbtc_time, cbtc = compute_cbtc(r_arrival_times, Npart=Npart,
                                    saveit=saveit, showfig=showfig,
                                    savefig=savefig, filename=filename)
 
-    btc_time, btc = compute_btc(arrival_times, saveit=saveit,
+    btc_time, btc = compute_btc(r_arrival_times, saveit=saveit,
                                 showfig=showfig, savefig=savefig,
                                 filename=filename)
 
