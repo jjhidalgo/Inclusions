@@ -2494,7 +2494,7 @@ def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
     return np.delete(arrival_times, reacted)
 
 ##################
-def reactive_btcs(arrival_times, Npart,
+def reactive_btcs(r_arrival_times, Npart,
                  bins='auto', saveit=False,
                  logx=False, logy=False, showfig=False,
                  savefig=False, filename=None):
@@ -2503,7 +2503,6 @@ def reactive_btcs(arrival_times, Npart,
     if saveit:
         filename = filename + '-react'
 
-    r_arrival_times = reactive_arrival_times(arrival_times, t_in_incl, react_rate)
     
     #Compute curves.
     cbtc_time, cbtc = compute_cbtc(r_arrival_times, Npart=Npart,
