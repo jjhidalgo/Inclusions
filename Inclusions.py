@@ -33,7 +33,8 @@ def run_simulation(*, Lx=1., Ny=50,
                    plotTpt=False, plotBTC=False,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
-                   overlapTol=None, control_planes=1, InjSize=1.):
+                   overlapTol=None, control_planes=1, InjSize=1.,
+                   reactive=False, react_rate=0.):
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
@@ -129,7 +130,8 @@ def run_simulation(*, Lx=1., Ny=50,
     elif transportMethod is None:
         print("Transport not solved.\n")
         transportSolved = False
-
+        
+# BTCs and postprocess.
 
     if filename is None:
         filename = 'K' + str(Kfactor).replace('.', '') + pack + 'Ninc' + str(n_incl_y)
@@ -143,6 +145,12 @@ def run_simulation(*, Lx=1., Ny=50,
         btc_time, btc = compute_btc(arrival_times,
                                     saveit=True, showfig=plotBTC, savefig=False,
                                     filename=filename)
+
+        # decay reactions computed after solving transport (easier to implement).
+        if reactive:
+           reactive_btcs(arrival_times, t_in_incl, react_rate,
+                         saveit=True, showfig=plotBTC, savefig=False,
+                         filename=filename)
 
         with open(filename + '.plk', 'wb') as ff:
             pickle.dump([Npart, t_in_incl, arrival_times], ff, pickle.HIGHEST_PROTOCOL)
@@ -618,7 +626,6 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
                 axt.set_ylim([0., Ly])
                 plt.title(t)
                 #plt.savefig(str(int(ipng)).zfill(4), dpi=600)
-
     print("Time: %f. Particles inside: %e" %(t, np.sum(isIn)))
     print("End of transport.")
 
@@ -757,10 +764,10 @@ def plotXY(x, y, fig=None, ax=None, lin=None, logx=False, logy=False,
         fig.canvas.draw()
 
     if logy:
-        ax.set_yscale("log", nonposy='mask')
+        ax.set_yscale("log", nonpositive='mask')
 
     if logx:
-        ax.set_xscale("log", nonposy='mask')
+        ax.set_xscale("log", nonpositive='mask')
 
     if allowClose:
         input("Dale enter y cierro...")
@@ -908,7 +915,7 @@ def time_per_inclusion(t_in_incl, Npart, bins='auto', saveit=False,
     trapped_part = flatten_list(list(trapped_part.values()))
     trapped_part = np.unique(np.array(trapped_part))
     num_free_part = Npart - trapped_part.shape[0]
-    trap_times = np.concatenate(np.array(list(incl_times.values())))
+    trap_times = np.concatenate(np.array(list(incl_times.values()), dtype="object"))
     # adds as many zeros as free particles
     trap_times = np.concatenate((trap_times, np.zeros(num_free_part)))
 
@@ -1332,19 +1339,22 @@ def total_time_in_incl(t_in_incl):
 
     return tot_t_in_incl
 ################
-def compute_cbtc(arrival_times, bins=None, saveit=False,
+def compute_cbtc(arrival_times, Npart=None, bins=None, saveit=False,
                  logx=False, logy=False, showfig=False,
                  savefig=False, filename=None):
     ''' Cummulative breakthrough curve from arrival times.'''
-    Npart = arrival_times.shape[0]
+    if Npart is None:
+        Npart = arrival_times.shape[0]
+
+    nVals = arrival_times.shape[0]
 
     if bins is None:
         cbtc_time = np.sort(arrival_times)
-        cbtc = 1. - np.cumsum(np.ones(Npart))/Npart
+        cbtc = nVals/Npart - np.cumsum(np.ones(nVals))/Npart
     else:
         vals, edges = np.histogram(arrival_times, bins=bins, density=False)
         cbtc_time = (edges[:-1] + edges[1:])/2.
-        cbtc = 1. - np.cumsum(vals)/Npart
+        cbtc = nVals/Npart - np.cumsum(vals)/Npart
 
     if saveit:
         fname = 'cbtc' + (bins is not None)*'-h' + '.dat'
@@ -1972,7 +1982,7 @@ def velocity_distribution_from_file(fname, folder='.',savedata=True,
     return True
 ################
 def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
-                      plotit = False, CC=None, xcp=None, fname=None,InjSize=1.):
+                      plotit=False, CC=None, xcp=None, fname=None,InjSize=1.):
     '''...'''
 
     # Geometry
@@ -2082,6 +2092,7 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
         uxp = (ux1[ic] + Ax[ic]*(xp[isIn] - x1[indx[isIn]]))
         uyp = (uy1[ic] + Ay[ic]*(yp[isIn] - y1[indy[isIn]]))
 
+
         #potential travel times and exit faces
         tx = travel_time(case_x[ic], xp[isIn], uxp,
                          ux1[ic], ux2[ic], Ax[ic], dx)
@@ -2094,11 +2105,14 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
         face_y = exit_face(case_y[ic], uyp, is_y=True)
 
         # actual travel time is the minimum.
-        time = np.array([tx, ty]).min(0)
+        # Some cells give nan but this should mean that there is no exit.
+        #qq time = np.array([tx, ty]).min(0)
+        time = np.nanmin(np.array([tx, ty]), 0)
 
         #actual exit face is the corresponding to the minimum travel time.
-        mm = np.array([tx, ty]).argmin(0)
-
+        ##mm = np.array([tx, ty]).argmin(0)
+        mm = np.nanargmin(np.array([tx, ty]), 0)
+        
         face = np.array([face_x, face_y])[mm, np.arange(mm.shape[0])]
 
         # Calculates exit point.
@@ -2107,9 +2121,10 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
                                         uxp, uyp, Ax, Ay,
                                         time, face, dx, dy, ic,
                                         x1, y1, indx[isIn], indy[isIn])
-
-        if i%(100) == 0:
+        if i%(1000) == 0:
             print("Last particle at: %e" %(np.min(xp)))
+            print("Particles inside: %e" %(isIn.size))
+
             if plotit:
                 figt, axt, lint = plotXY(xp[isIn], yp[isIn], figt, axt, lint)
                 axt.set_aspect('equal')
@@ -2124,8 +2139,6 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
 
         t_in_incl = update_time_in_incl(t_in_incl, incl_ind, isIn,
                                         indx[isIn], indy[isIn], arrival_times)
-
-
         # Determine new cell.
         # if exits through face
         #   1 --> indx - 1
@@ -2212,13 +2225,13 @@ def pollock_case(u1, u2):
     case[(u1 <= 0) & (u2 <= 0) & (np.abs(u1 - u2) < 1e-12)] = 4
     case[(u1 > 0) & (u2 < 0)] = 5
     case[(u1 < 0) & (u2 > 0)] = 6
-
+    
     return case
 #############
 def travel_time(case, p, up, u1, u2, A, dp):
     ''' Determines the travel time based on the Pollock case.'''
 
-    #np.seterr(all='ignore')
+    np.seterr(all='ignore')
 
     time = 1e19*np.ones(case.shape)
 
@@ -2229,7 +2242,6 @@ def travel_time(case, p, up, u1, u2, A, dp):
     time = np.where(case == 3, dp/u1, time)
 
     time = np.where(case == 4, dp/u2, time)
-
     time = np.where(case == 5, 1e19, time)
 
     time = np.where((case == 6) & (up > 0), (1./A)*np.log(u2/up), time)
@@ -2265,7 +2277,6 @@ def exit_face(case, up, is_y = False):
 def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
                time, face, dx, dy, ic, x1, y1, indx, indy):
 
-
     xpnew = np.where((case_x[ic] == 3) | (case_x[ic] == 4),
                   xp + uxp*time,
                   x1[indx] + (1./Ax[ic])*(uxp*np.exp(Ax[ic]*time) - ux1[ic])
@@ -2282,14 +2293,13 @@ def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
 
     yp[face == -1] = y1[indy][face == -1]
     yp[face == -2] = y1[indy + 1][face == -2]
-
     yp[(face != -1) & (face != -2) ] = ypnew[(face != -1) & (face != -2)]
 
     return xp, yp
 ##################
 def compute_btc(arrival_times, bins='auto', saveit=False,
                  logx=False, logy=False, showfig=False,
-                 savefig=False, filename=None):
+                 savefig=False, filename=None, ww=None):
     ''' Breakthrough curve from arrival times.'''
 
     vals, edges = np.histogram(arrival_times, bins=bins, density=True)
@@ -2447,3 +2457,58 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
               savedata=savedata, figname=figname)
 
     return True
+
+##################
+def reactive_btcs(arrival_times, t_in_incl, react_rate,
+                 bins='auto', saveit=False,
+                 logx=False, logy=False, showfig=False,
+                 savefig=False, filename=None):
+    ''' Breakthrough curve from arrival times with reactions'''
+
+
+    Npart = arrival_times.shape[0]
+    # get in/out time of each particle per inclusion
+    incl_times, _ = time_per_inclusion(t_in_incl, Npart)
+        
+    # total time of each particle on each inclusion given by particle
+    # (list of dictionaries with repeated keys)
+    total_time = total_time_in_incl(t_in_incl)
+        
+    # We get the index of trapped particle from dict keys.
+    all_keys = set().union(*(d.keys() for d in total_time))
+    trapped_part = np.array(list(all_keys), dtype='int')
+    #trapped_part = np.fromiter(all_keys, int, len(all_keys))
+
+    # Time spent in inclusions grouped by particle.
+    resident_times = {k: [d.get(k) for d in total_time if k in d] 
+                 for k in set().union(*total_time)}
+
+    # We check if particle reacted
+    reacted = []
+    
+    for particle in trapped_part:
+        times = np.array(list(resident_times.get(particle)))
+        react_prob = 1. - np.exp(-react_rate*times) 
+        check = np.random.uniform(size=times.shape)
+        if np.any(check < react_prob):
+            reacted.append(particle)
+
+    # We remove arrival times of particles that reacted
+    arrival_times = np.delete(arrival_times, reacted)
+
+    if saveit:
+        filename = filename + '-react'
+
+    #Compute curves.
+    cbtc_time, cbtc = compute_cbtc(arrival_times, Npart=Npart,
+                                   saveit=saveit, showfig=showfig,
+                                   savefig=savefig, filename=filename)
+
+    btc_time, btc = compute_btc(arrival_times, saveit=saveit,
+                                showfig=showfig, savefig=savefig,
+                                filename=filename)
+
+    #rescale btc
+    btc = btc *arrival_times.shape[0]/Npart
+    
+    return btc_time, btc, cbtc_time, cbtc 
