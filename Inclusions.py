@@ -2459,9 +2459,11 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
     return True
 
 ##################
-def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
-    ''' Arrival times with reactions'''
+def resident_times(t_in_incl, Npart):
+    '''Resident times of particlues in each inclusion'''
 
+    # get in/out time of each particle per inclusion
+    incl_times, _ = time_per_inclusion(t_in_incl, Npart)
     Npart = arrival_times.shape[0]
     # get in/out time of each particle per inclusion
     incl_times, _ = time_per_inclusion(t_in_incl, Npart)
@@ -2478,6 +2480,15 @@ def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
     # Time spent in inclusions grouped by particle.
     resident_times = {k: [d.get(k) for d in total_time if k in d] 
                  for k in set().union(*total_time)}
+
+    return resident_times
+##################
+def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
+    ''' Arrival times with reactions'''
+
+    Npart = arrival_times.shape[0]
+    
+    resident_times = resident_times(t_in_incl, Npart)
 
     # We check if particle reacted
     reacted = []
