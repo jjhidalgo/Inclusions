@@ -2464,7 +2464,7 @@ def resident_times(t_in_incl, Npart):
 
     # get in/out time of each particle per inclusion
     incl_times, _ = time_per_inclusion(t_in_incl, Npart)
-    Npart = arrival_times.shape[0]
+
     # get in/out time of each particle per inclusion
     incl_times, _ = time_per_inclusion(t_in_incl, Npart)
         
