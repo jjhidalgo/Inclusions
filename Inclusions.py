@@ -2514,6 +2514,6 @@ def reactive_btcs(r_arrival_times, Npart,
                                 filename=filename)
 
     #rescale btc
-    btc = btc *arrival_times.shape[0]/Npart
+    btc = btc *r_arrival_times.shape[0]/Npart
     
     return btc_time, btc, cbtc_time, cbtc 
