@@ -2505,11 +2505,11 @@ def reactive_btcs(r_arrival_times, Npart,
 
     
     #Compute curves.
-    cbtc_time, cbtc = compute_cbtc(r_arrival_times, Npart=Npart,
+    cbtc_time, cbtc = compute_cbtc(r_arrival_times, Npart=Npart, bins=bins,
                                    saveit=saveit, showfig=showfig,
                                    savefig=savefig, filename=filename)
 
-    btc_time, btc = compute_btc(r_arrival_times, saveit=saveit,
+    btc_time, btc = compute_btc(r_arrival_times,  bins=bins, saveit=saveit,
                                 showfig=showfig, savefig=savefig,
                                 filename=filename)
 
