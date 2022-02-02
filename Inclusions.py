@@ -148,7 +148,10 @@ def run_simulation(*, Lx=1., Ny=50,
 
         # decay reactions computed after solving transport (easier to implement).
         if reactive:
-           reactive_btcs(arrival_times, t_in_incl, react_rate,
+           r_arrival_times = reactive_arrival_times(arrival_times,
+                                                    t_in_incl, react_rate)
+
+           reactive_btcs(r_arrival_times, Npart,
                          saveit=True, showfig=plotBTC, savefig=False,
                          filename=filename)
 
@@ -2463,10 +2466,7 @@ def resident_times(t_in_incl, Npart):
     '''Resident times of particlues in each inclusion'''
 
     # get in/out time of each particle per inclusion
-    incl_times, _ = time_per_inclusion(t_in_incl, Npart)
-
-    # get in/out time of each particle per inclusion
-    incl_times, _ = time_per_inclusion(t_in_incl, Npart)
+    # not used ?incl_times, _ = time_per_inclusion(t_in_incl, Npart)
         
     # total time of each particle on each inclusion given by particle
     # (list of dictionaries with repeated keys)
@@ -2478,30 +2478,30 @@ def resident_times(t_in_incl, Npart):
     #trapped_part = np.fromiter(all_keys, int, len(all_keys))
 
     # Time spent in inclusions grouped by particle.
-    resident_times = {k: [d.get(k) for d in total_time if k in d] 
+    res_times = {k: [d.get(k) for d in total_time if k in d] 
                  for k in set().union(*total_time)}
 
-    return resident_times
+    return res_times, trapped_part
+
 ##################
 def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
     ''' Arrival times with reactions'''
 
     Npart = arrival_times.shape[0]
     
-    resident_times = resident_times(t_in_incl, Npart)
+    res_times, trapped_part = resident_times(t_in_incl, Npart)
 
     # We check if particle reacted
     reacted = []
     
     for particle in trapped_part:
-        times = np.array(list(resident_times.get(particle)))
+        times = np.array(list(res_times.get(particle)))
         react_prob = 1. - np.exp(-react_rate*times) 
         check = np.random.uniform(size=times.shape)
         if np.any(check < react_prob):
             reacted.append(particle)
 
     # We remove arrival times of particles that reacted
-    
     return np.delete(arrival_times, reacted)
 
 ##################
