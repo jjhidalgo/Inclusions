@@ -34,7 +34,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
                    overlapTol=None, control_planes=1, InjSize=1.,
-                   reactive=False, react_rate=0.):
+                   reactive=False, react_rate=0., react_dist='const'):
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
@@ -149,7 +149,7 @@ def run_simulation(*, Lx=1., Ny=50,
         # decay reactions computed after solving transport (easier to implement).
         if reactive:
            r_arrival_times = reactive_arrival_times(arrival_times,
-                                                    t_in_incl, react_rate)
+                                                    t_in_incl, react_rate, react_dist)
 
            reactive_btcs(r_arrival_times, Npart,
                          saveit=True, showfig=plotBTC, savefig=False,
@@ -1418,32 +1418,7 @@ def perm_matrix(grid, circles, Kfactor, Kdist='const', Kincl=None):
     n_incl = circles.shape[0]
 
     if  Kincl is None:
-
-        if Kdist=='uni':
-            Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(), size=n_incl)
-        elif Kdist=='lognorm':
-            #Kfactor[0] -> Geometric mean of K.
-            #Kfactor[1] -> Variance of logK.
-            Kincl = np.random.normal(0., 1.,size=n_incl)
-            Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
-        elif Kdist=='tgamma':
-            # a -> shape.
-            # b -> scale.
-            #mean = b*a;  variance=a*b^2
-            #Kfactor[0] -> shape as in wikipedia (k)
-            #Kfactor[1] -> scale as in wikipedia (theta). Scipy calls scale to the inverse.
-            #Kfactor[2] -> Left truncation value.
-            #Kfactor[3] -> Right truncation value.
-            Kincl = trunc_gamma(Kfactor[0], Kfactor[1], Kfactor[2], Kfactor[3], size=n_incl)
-        elif Kdist=='gamma':
-            # a -> shape.
-            # b -> scale.
-            #mean = b*a;  variance=a*b^2
-            #Kfactor[0] -> shape as in wikipedia (k)
-            #Kfactor[1] -> scale as in wikipedia (theta).
-            Kincl =  np.random.gamma(Kfactor[0], scale=Kfactor[1], size=n_incl)
-        else: # default constant
-            Kincl = np.full((n_incl,), Kfactor[0])
+        Kincl = calc_distributed_perm(Kfactor, Kdist, n_incl)
     else:
         print('Using given Kincl.')
     i = 0
@@ -2465,14 +2440,13 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
 def resident_times(t_in_incl, Npart):
     '''Resident times of particlues in each inclusion'''
 
-    # get in/out time of each particle per inclusion
-    # not used ?incl_times, _ = time_per_inclusion(t_in_incl, Npart)
         
-    # total time of each particle on each inclusion given by particle
+    # total time of each particle in each inclusion given by inclusion
+    # total_time has nincl dictionaries.
     # (list of dictionaries with repeated keys)
     total_time = total_time_in_incl(t_in_incl)
         
-    # We get the index of trapped particle from dict keys.
+    # We get the index of trapped particles from dict keys.
     all_keys = set().union(*(d.keys() for d in total_time))
     trapped_part = np.array(list(all_keys), dtype='int')
     #trapped_part = np.fromiter(all_keys, int, len(all_keys))
@@ -2481,22 +2455,34 @@ def resident_times(t_in_incl, Npart):
     res_times = {k: [d.get(k) for d in total_time if k in d] 
                  for k in set().union(*total_time)}
 
-    return res_times, trapped_part
+    
+    # Visited inclusions
+    visited_incl = {k: [idx for idx, d in enumerate(total_time) if k in d]
+                  for k in set().union(*total_time)}
+
+    return res_times, trapped_part, visited_incl
 
 ##################
-def reactive_arrival_times(arrival_times, t_in_incl, react_rate):
+def reactive_arrival_times(arrival_times, t_in_incl, react_rate, react_dist):
     ''' Arrival times with reactions'''
 
     Npart = arrival_times.shape[0]
-    
-    res_times, trapped_part = resident_times(t_in_incl, Npart)
+    n_incl = len(t_in_incl)
 
+    # Compute reaction rate per particle.
+    react_rate = np.atleast_1d(react_rate)
+    react_rates = calc_distributed_perm(react_rate, react_dist, n_incl)
+
+    res_times, trapped_part, visited_incl = resident_times(t_in_incl, Npart)
     # We check if particle reacted
     reacted = []
     
     for particle in trapped_part:
+        
         times = np.array(list(res_times.get(particle)))
-        react_prob = 1. - np.exp(-react_rate*times) 
+        rr = react_rates[visited_incl[particle]].reshape(-1,1) #convert to column
+        
+        react_prob = 1. - np.exp(-rr*times) 
         check = np.random.uniform(size=times.shape)
         if np.any(check < react_prob):
             reacted.append(particle)
@@ -2528,3 +2514,36 @@ def reactive_btcs(r_arrival_times, Npart,
     btc = btc *r_arrival_times.shape[0]/Npart
     
     return btc_time, btc, cbtc_time, cbtc 
+
+##################
+def calc_distributed_perm(Kfactor, Kdist, n_incl):
+    ''' Computes permeability distribution.'''
+
+    if Kdist=='uni':
+            Kincl = np.random.uniform(Kfactor.min(), Kfactor.max(), size=n_incl)
+    elif Kdist=='lognorm':
+        #Kfactor[0] -> Geometric mean of K.
+        #Kfactor[1] -> Variance of logK.
+        Kincl = np.random.normal(0., 1.,size=n_incl)
+        Kincl = Kfactor[0]*np.exp(Kincl*np.sqrt(Kfactor[1]))
+
+    elif Kdist=='tgamma':
+        # a -> shape.
+        # b -> scale.
+        #mean = b*a;  variance=a*b^2
+        #Kfactor[0] -> shape as in wikipedia (k)
+        #Kfactor[1] -> scale as in wikipedia (theta). Scipy calls scale to the inverse.
+        #Kfactor[2] -> Left truncation value.
+        #Kfactor[3] -> Right truncation value.
+        Kincl = trunc_gamma(Kfactor[0], Kfactor[1], Kfactor[2], Kfactor[3], size=n_incl)
+    elif Kdist=='gamma':
+        # a -> shape.
+        # b -> scale.
+        #mean = b*a;  variance=a*b^2
+        #Kfactor[0] -> shape as in wikipedia (k)
+        #Kfactor[1] -> scale as in wikipedia (theta).
+        Kincl =  np.random.gamma(Kfactor[0], scale=Kfactor[1], size=n_incl)
+    else: # default constant
+        Kincl = np.full((n_incl,), Kfactor[0])
+
+    return Kincl
