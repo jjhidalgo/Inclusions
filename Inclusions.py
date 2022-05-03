@@ -34,7 +34,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
                    overlapTol=None, control_planes=1, InjSize=1.,
-                   reactive=False, react_rate=0., react_dist='const'):
+                   reactive=False, Rfactor=0., Rdist='const'):
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
@@ -148,8 +148,12 @@ def run_simulation(*, Lx=1., Ny=50,
 
         # decay reactions computed after solving transport (easier to implement).
         if reactive:
+           react_rate = comp_react_rate(Rfactor, Rdist, Kincl.shape[0], Kincl, Kfactor,
+                                        saveit=True, filename=filename)
+
            r_arrival_times = reactive_arrival_times(arrival_times,
-                                                    t_in_incl, react_rate, react_dist)
+                                                    t_in_incl, react_rate,
+                                                    saveit=True, filename=filename)
 
            reactive_btcs(r_arrival_times, Npart,
                          saveit=True, showfig=plotBTC, savefig=False,
@@ -1454,6 +1458,18 @@ def load_perm(fname):
 
     return grid, circles, Kfactor, Kdist, Kincl
 ################
+def load_react(fname):
+    """ Loads the reaction rate distribution in the given plk file."""
+
+    with open(fname + '-react.plk', 'rb') as ff:
+        data = pickle.load(ff)
+        Rfactor = data[0]
+        Rdist = data[1]
+        react_rate = np.array(data[2])
+
+    return Rfactor, Rdist, react_rate
+
+################
 def incl_per_time(t_in_incl, plotit=False, saveit=False, filename=None):
     """ Given the dictionary whith the time at which each particle entered
         and exited each inclusion, returns the total number of inclusions
@@ -2357,7 +2373,7 @@ def trunc_gamma(shape, theta, a1, a2, size=1):
 ##################
 def save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=None):
     ''' Save permeability data'''
-    
+
     if filename is None:
         fname = 'perm.plk'
     else:
@@ -2366,6 +2382,20 @@ def save_perm(grid, circles, Kfactor, Kdist, Kincl, filename=None):
     with open(fname, 'wb') as ff:
         pickle.dump([grid, circles, Kfactor, Kdist, Kincl],
                     ff, pickle.HIGHEST_PROTOCOL)
+
+##################
+def save_react(Rfactor, Rdist, react_rate, filename=None):
+    ''' Save permeability data'''
+
+    if filename is None:
+        fname = 'react.plk'
+    else:
+        fname = filename + '-react.plk'
+
+    with open(fname, 'wb') as ff:
+        pickle.dump([Rfactor, Rdist, react_rate],
+                    ff, pickle.HIGHEST_PROTOCOL)
+
 ##################
 def chek_overlap(circles):
 
@@ -2437,8 +2467,8 @@ def particle_velocity_distribution(t_in_incl, incl_ind, ux=None, uy=None, bins='
     return True
 
 ##################
-def resident_times(t_in_incl, Npart):
-    '''Resident times of particlues in each inclusion'''
+def residence_times(t_in_incl, Npart):
+    '''Residence times of particles in each inclusion'''
 
         
     # total time of each particle in each inclusion given by inclusion
@@ -2463,32 +2493,36 @@ def resident_times(t_in_incl, Npart):
     return res_times, trapped_part, visited_incl
 
 ##################
-def reactive_arrival_times(arrival_times, t_in_incl, react_rate, react_dist):
+def reactive_arrival_times(arrival_times, t_in_incl, react_rate,
+                           saveit=False, filename=None):
     ''' Arrival times with reactions'''
 
     Npart = arrival_times.shape[0]
     n_incl = len(t_in_incl)
 
-    # Compute reaction rate per particle.
-    react_rate = np.atleast_1d(react_rate)
-    react_rates = calc_distributed_perm(react_rate, react_dist, n_incl)
-
-    res_times, trapped_part, visited_incl = resident_times(t_in_incl, Npart)
+    res_times, trapped_part, visited_incl = residence_times(t_in_incl, Npart)
     # We check if particle reacted
     reacted = []
     
     for particle in trapped_part:
         
         times = np.array(list(res_times.get(particle)))
-        rr = react_rates[visited_incl[particle]].reshape(-1,1) #convert to column
+        rr = react_rate[visited_incl[particle]].reshape(-1,1) #convert to column
         
         react_prob = 1. - np.exp(-rr*times) 
         check = np.random.uniform(size=times.shape)
         if np.any(check < react_prob):
             reacted.append(particle)
 
-    # We remove arrival times of particles that reacted
-    return np.delete(arrival_times, reacted)
+    # We remove the arrival times of particles that reacted
+    reactive_at = np.delete(arrival_times, reacted)
+
+    if saveit:
+        if saveit:
+            f = filename + '-react-arrival-times.npy'
+            np.save(f, reactive_at)
+        
+    return reactive_at
 
 ##################
 def reactive_btcs(r_arrival_times, Npart,
@@ -2543,7 +2577,56 @@ def calc_distributed_perm(Kfactor, Kdist, n_incl):
         #Kfactor[0] -> shape as in wikipedia (k)
         #Kfactor[1] -> scale as in wikipedia (theta).
         Kincl =  np.random.gamma(Kfactor[0], scale=Kfactor[1], size=n_incl)
+        
     else: # default constant
         Kincl = np.full((n_incl,), Kfactor[0])
 
     return Kincl
+
+##################
+def comp_react_rate(Rfactor, Rdist, n_incl, Kincl, Kfactor, saveit=False, filename=None):
+    ''''Computes reaction rates given the describing parameters.'''
+
+    # Compute reaction rate per particle.
+    Rfactor = np.atleast_1d(Rfactor)
+    if Rdist=='correlated':
+        #Rfactor[0] -> Geometric mean of R.
+        #Rfactor[1] -> Variance of logR.
+        #Rfactor[2] -> correlation coefficiente
+        #Kfactor[0] -> Geometric mean of K.
+        #Kfactor[1] -> Variance of logK.
+        react_rate = correlated_var(Kincl, Rfactor[2], undo_transform=True, Xmean=Kfactor[0], Xvar=Kfactor[1])
+        react_rate = Rfactor[0]*np.exp(react_rate*np.sqrt(Rfactor[1]))
+
+    else:
+        react_rate = calc_distributed_perm(Rfactor, Rdist, n_incl)
+
+    if saveit:
+        save_react(Rfactor, Rdist, react_rate, filename=filename)
+
+    return react_rate
+
+##################
+def correlated_var(X1, corr_coef, undo_transform=False, Xmean=None, Xvar=None):
+    '''Generates a variable correlated to a given one using Cholesky transformation.
+       From:
+https://stats.stackexchange.com/questions/450771/cholesky-decomposition-or-alternative-for-negatively-correlated-data-simulations'''
+
+    #Undoes the tranformation so that we get mean=0 and var=1
+    if undo_transform and Xmean is not None and Xvar is not None:
+        X1 = (1./np.sqrt(Xvar))*np.log(X1/Xmean)
+
+    # Correlation matrix
+    corr_mat = corr_coef*np.ones((2,2))
+    np.fill_diagonal(corr_mat, 1.)
+
+    Lmat = np.linalg.cholesky(corr_mat)
+
+    # New variable
+    X2 = np.random.normal(0., 1.,size=X1.shape[0])
+
+    # We construct the correlated variable
+    data = np.vstack((X1, X2))
+    XX = Lmat.dot(data)
+
+    return XX[1, :]
