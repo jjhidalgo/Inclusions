@@ -34,7 +34,7 @@ def run_simulation(*, Lx=1., Ny=50,
                    filename=None, doPost=True, doVelPost=False,
                    directSolver=True, tol=1e-10, maxiter=2000,
                    overlapTol=None, control_planes=1, InjSize=1.,
-                   reactive=False, Rfactor=0., Rdist='const'):
+                   reactive=False, Rfactor=0., Rdist='const', Diff=None):
     """ Runs a simulation."""
 
 # Flow methods : CalcPerm, ReadPerm, ReadVel
@@ -114,7 +114,7 @@ def run_simulation(*, Lx=1., Ny=50,
     if transportMethod == 'time':
         arrival_times, t_in_incl = transport(grid, incl_ind,
                                              Npart, ux, uy,
-                                             tmax, dt, isPeriodic=isPeriodic,
+                                             tmax, dt, isPeriodic=isPeriodic, Diff=Diff,
                                              plotit=plotTpt, CC=kperm, InjSize=InjSize)
     elif transportMethod == 'streamlines':
         arrival_times, t_in_incl = transport_ds(grid, incl_ind,
