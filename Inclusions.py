@@ -101,13 +101,21 @@ def run_simulation(*, Lx=1., Ny=50,
 
     if dt is None:
         if integrateInTime:
-            tx = grid['Lx']/grid['Nx']/ux.max()
-            ty = grid['Ly']/grid['Ny']/uy.max()
-            dt = np.min([tx, ty, 1e-3])
+            tx = 0.5*grid['Lx']/grid['Nx']/ux.max()
+            ty = 0.5*grid['Ly']/grid['Ny']/uy.max()
+            if Diff is not None:
+                tdiff = 0.5*(grid['Lx']/grid['Nx'])*(grid['Lx']/grid['Nx'])/Diff
+            else:
+                tdiff = 1e9
 
+            dt = np.min([tx, ty, tdiff,1e-3])
+            print(tx) #qqq
+            print(ty)
+            print(tdiff)
         else:
             dt = 0.1*Kincl.min()*grid['Lx']/grid['Nx']
 
+        print(['dt = ', dt])
 
     transportSolved = True
 
@@ -549,7 +557,7 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
     for i in range(num_incl):
         t_in_incl.append({})
 
-    nwrite = 50 # np.max([int((tmax/dt)/1000),10])
+    nwrite = 100#qqq # np.max([int((tmax/dt)/1000),10])
     arrival_times = np.zeros(Npart)
     i = 0
 
@@ -558,6 +566,10 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
         Dm = np.sqrt(2.*Diff*dt)
         vv = []
         tt = []
+        # random number generator
+        from numpy.random import default_rng
+        rng = default_rng()
+        
     if tmax is None:
         print('tmax not defined. tmax = 1.0')
         tmax = 1.0
@@ -601,8 +613,8 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
 
         if Diff is not None:
             nn = xp[isIn].shape[0]
-            xp[isIn] = xp[isIn] + Dm*np.random.normal(0,1,nn)
-            yp[isIn] = yp[isIn] + Dm*np.random.normal(0,1,nn)
+            xp[isIn] = xp[isIn] + Dm*rng.normal(0, 1, nn) #np.random.normal(0,1,nn)
+            yp[isIn] = yp[isIn] + Dm*rng.normal(0, 1, nn)
 
         #print ["{0:0.19f}".format(i) for i in yp]
 
@@ -1321,12 +1333,15 @@ def update_time_in_incl(t_in_incl, incl_ind, isIn, indx, indy, time):
     #index of inclusions where particles are
     # -1 because zero based convention of arrays...
     incl = aux1[aux1 > 0].astype(int) - 1
-
+    #ESTO DA PROBLEMAS SI LA PARTÍCULA ESTÁ MENOS DE UN DT EN LA INCLUSIÓN (TRANSPORTE EULERIANO)
+    # O SI SÓLO ATRAVIESA UNA CELDA DENTRO DE LA INCLUSIÓN (POLLOCK).
     #Update of time spent by particles in each inclusion
     for part, inc in zip(parts_in_incl, incl):
         try:
             t_in_incl[inc][part][1] = time[part]
         except:
+            # We use the error to initialize t_in_incl[inc][part] the first time.
+            #ipdb.set_trace()
             t_in_incl[inc][part] = [time[part], 0.0]
 
     return t_in_incl
