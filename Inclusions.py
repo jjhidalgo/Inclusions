@@ -205,7 +205,7 @@ def setup_grid(Lx, Ny):
                 'formats':['float64', 'float64', 'int32', 'int32']})
     grid['Lx'] = Lx
     grid['Ly'] = 1.
-    grid['Nx'] = np.int(Lx*Ny)
+    grid['Nx'] = int(Lx*Ny)
     grid['Ny'] = Ny
 
     return grid
@@ -237,7 +237,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
 
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
-    n_incl_x = np.int(Lx*n_incl_y)
+    n_incl_x = int(Lx*n_incl_y)
     n_incl = number_of_grains(n_incl_y, n_incl_x, pack)
 
     if radius is None:
@@ -316,7 +316,7 @@ def permeability(grid, n_incl_y, Kfactor=1., Kdist='const', pack='sqr',
     # if no discretization is given a 30th of the smallest inclusion's
     # radius is chosen as cell size.
     if Ny < 1:
-        Ny = np.int(30/rmin)
+        Ny = int(30/rmin)
 
     grid = setup_grid(Lx + displacement, Ny)
 
@@ -528,8 +528,8 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
     #xp = 1.5 + rad*np.cos(alpha)
     #yp  = 0.5 +rad*np.sin(alpha)
     #qq
-    dx = np.float(Lx/Nx)
-    dy = np.float(Ly/Ny)
+    dx = float(Lx/Nx)
+    dy = float(Ly/Ny)
 
     Ax = ((ux[:, 1:Nx + 1] - ux[:, 0:Nx])/dx).flatten(order='F')
     Ay = ((uy[1:Ny + 1, :] - uy[0:Ny, :])/dy).flatten(order='F')
@@ -583,8 +583,8 @@ def transport(grid, incl_ind, Npart, ux, uy, tmax, dt, Diff=None,
         indy = (yp[isIn]/dy).astype(int)
 
         # I thought this was faster
-        #indx = np.int_(xp[isIn]/dx)
-        #indy = np.int_(yp[isIn]/dy)
+        #indx = int_(xp[isIn]/dx)
+        #indy = int_(yp[isIn]/dy)
 
         ix = (indy + indx*Ny)
 
@@ -669,8 +669,8 @@ def transport_ds(grid, incl_ind, Npart, ux, uy, ds, isPeriodic=False):
     #xp = 1.5 + rad*np.cos(alpha)
     #yp  = 0.5 + rad*np.sin(alpha)
     #qq
-    dx = np.float(Lx/Nx)
-    dy = np.float(Ly/Ny)
+    dx = float(Lx/Nx)
+    dy = float(Ly/Ny)
 
     Ax = ((ux[:, 1:Nx + 1] - ux[:, 0:Nx])/dx).flatten(order='F')
     Ay = ((uy[1:Ny + 1, :] - uy[0:Ny, :])/dy).flatten(order='F')
@@ -1751,7 +1751,7 @@ def inclusion_area(grid, circles,  kperm=None):
     # We do not take into account the displacement
     radius = circles[0]['r']
     displacement = np.ceil(4.*radius)
-    ndisp = np.int(displacement/dx/2)
+    ndisp = int(displacement/dx/2)
 
     incl_area = sum(kperm[:, ndisp:-ndisp].flatten() < 1.)
     total_area = sum(kperm[:, ndisp:-ndisp].flatten() > 0.)
@@ -1997,8 +1997,8 @@ def transport_pollock(grid, incl_ind, Npart, ux, uy, isPeriodic=False,
     # Geometry
     Lx, Ly, Nx, Ny = unpack_grid(grid)
 
-    dx = np.float(Lx/Nx)
-    dy = np.float(Ly/Ny)
+    dx = float(Lx/Nx)
+    dy = float(Ly/Ny)
 
     # Interpolant
     Ax = ((ux[:, 1:Nx + 1] - ux[:, 0:Nx])/dx).flatten(order='F')
@@ -2296,7 +2296,7 @@ def exit_point(case_x, case_y, ux1, uy1, xp, yp, uxp, uyp, Ax, Ay,
                   y1[indy] + (1./Ay[ic])*(uyp*np.exp(Ay[ic]*time) - uy1[ic])
                   )
 
-    xp[face == 1] = x1[indx - 1][face == 1]
+    xp[face == 1] = x1[indx][face == 1] #used to be  x1[indx - 1][face == 1] !?
     xp[face == 2] = x1[indx + 1][face == 2]
     xp[(face != 1) & (face != 2)] = xpnew[(face != 1) & (face != 2)]
 
