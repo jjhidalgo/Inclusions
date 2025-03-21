@@ -479,7 +479,7 @@ def flow(grid, mu, bcc, isPeriodic=True, plotHead=False,
 
 
     if isPeriodic:
-        uy[0, :] = Typ*(head[0, :] - head[Ny - 1, :])/dy
+        uy[0, :] = -Typ*(head[0, :] - head[Ny - 1, :])/dy
         uy[Ny, :] = uy[0, :]
 
 
